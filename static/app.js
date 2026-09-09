@@ -194,6 +194,8 @@ function initDropzone() {
   const fileName = document.getElementById('file-name');
   const removeFile = document.getElementById('remove-file');
 
+  if (!dropzone || !fileInput) return;
+
   dropzone.addEventListener('click', (e) => {
     if (e.target.id !== 'remove-file') {
       fileInput.click();
@@ -229,25 +231,28 @@ function initDropzone() {
     }
   });
 
-  removeFile.addEventListener('click', (e) => {
-    e.stopPropagation();
-    currentSelectedFile = null;
-    fileInput.value = '';
-    fileTag.style.display = 'none';
-  });
+  if (removeFile) {
+    removeFile.addEventListener('click', (e) => {
+      e.stopPropagation();
+      currentSelectedFile = null;
+      fileInput.value = '';
+      if (fileTag) fileTag.style.display = 'none';
+    });
+  }
 }
 
 function handleFileSelected(file) {
   currentSelectedFile = file;
   const fileTag = document.getElementById('file-tag');
   const fileName = document.getElementById('file-name');
-  fileName.textContent = file.name;
-  fileTag.style.display = 'inline-flex';
+  if (fileName) fileName.textContent = file.name;
+  if (fileTag) fileTag.style.display = 'inline-flex';
 }
 
 function initChips() {
   const chips = document.querySelectorAll('.chip');
   const githubInput = document.getElementById('github-username');
+  if (!githubInput) return;
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
       githubInput.value = chip.getAttribute('data-user');
@@ -257,6 +262,7 @@ function initChips() {
 
 function initDemoSample() {
   const btn = document.getElementById('btn-load-sample');
+  if (!btn) return;
   btn.addEventListener('click', async () => {
     try {
       btn.disabled = true;
@@ -273,7 +279,7 @@ function initDemoSample() {
       }
       
       const githubInput = document.getElementById('github-username');
-      if (!githubInput.value) {
+      if (githubInput && !githubInput.value) {
         githubInput.value = 'tiangolo';
       }
     } catch (err) {
@@ -290,57 +296,63 @@ function initForm() {
   const btnReset = document.getElementById('btn-reset');
   const btnDownload = document.getElementById('btn-download-json');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-    if (!currentSelectedFile) {
-      alert('Please upload a resume PDF first or click "Use Sample Resume".');
-      return;
-    }
-
-    const githubUser = document.getElementById('github-username').value.trim();
-    const webhookUrl = document.getElementById('webhook-url').value.trim();
-
-    showLoadingState();
-
-    const formData = new FormData();
-    formData.append('file', currentSelectedFile);
-    if (githubUser) formData.append('github_username', githubUser);
-    if (webhookUrl) formData.append('webhook_url', webhookUrl);
-
-    try {
-      const res = await fetch('/api/v1/screen', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Screening request failed');
+      if (!currentSelectedFile) {
+        alert('Please upload a resume PDF first or click "Use Sample Resume".');
+        return;
       }
 
-      const { task_id } = await res.json();
-      pollForResult(task_id);
-    } catch (err) {
-      alert('Error: ' + err.message);
+      const githubUser = document.getElementById('github-username')?.value.trim() || '';
+      const webhookUrl = document.getElementById('webhook-url')?.value.trim() || '';
+
+      showLoadingState();
+
+      const formData = new FormData();
+      formData.append('file', currentSelectedFile);
+      if (githubUser) formData.append('github_username', githubUser);
+      if (webhookUrl) formData.append('webhook_url', webhookUrl);
+
+      try {
+        const res = await fetch('/api/v1/screen', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Screening request failed');
+        }
+
+        const { task_id } = await res.json();
+        pollForResult(task_id);
+      } catch (err) {
+        alert('Error: ' + err.message);
+        showPlaceholderState();
+      }
+    });
+  }
+
+  if (btnReset) {
+    btnReset.addEventListener('click', () => {
       showPlaceholderState();
-    }
-  });
+    });
+  }
 
-  btnReset.addEventListener('click', () => {
-    showPlaceholderState();
-  });
-
-  btnDownload.addEventListener('click', () => {
-    if (!currentScorecardData) return;
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentScorecardData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `${currentScorecardData.candidate_name.replace(/\s+/g, '_').toLowerCase()}_scorecard.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  });
+  if (btnDownload) {
+    btnDownload.addEventListener('click', () => {
+      if (!currentScorecardData) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentScorecardData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `${currentScorecardData.candidate_name.replace(/\s+/g, '_').toLowerCase()}_scorecard.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+  }
 }
 
 async function pollForResult(taskId) {
@@ -722,54 +734,63 @@ function initBatchAudit() {
 
   let selectedBatchFiles = [];
 
-  btnSim.addEventListener('click', async () => {
-    try {
-      showBatchLoading("Simulating Inbound Morning Batch (10 Applications)...");
-      const res = await fetch('/api/v1/batch/simulate', { method: 'POST' });
-      if (!res.ok) throw new Error('Simulation failed');
-      const data = await res.json();
-      pollBatchResult(data.batch_id);
-    } catch (e) {
-      alert('Error: ' + e.message);
-      hideBatchLoading();
-    }
-  });
+  if (btnSim) {
+    btnSim.addEventListener('click', async () => {
+      try {
+        showBatchLoading("Simulating Inbound Morning Batch (10 Applications)...");
+        const res = await fetch('/api/v1/batch/simulate', { method: 'POST' });
+        if (!res.ok) throw new Error('Simulation failed');
+        const data = await res.json();
+        pollBatchResult(data.batch_id);
+      } catch (e) {
+        alert('Error: ' + e.message);
+        hideBatchLoading();
+      }
+    });
+  }
 
-  batchDropzone.addEventListener('click', (e) => {
-    if (e.target.id !== 'btn-start-batch-upload') {
-      batchInput.click();
-    }
-  });
+  if (batchDropzone && batchInput) {
+    batchDropzone.addEventListener('click', (e) => {
+      if (e.target.id !== 'btn-start-batch-upload') {
+        batchInput.click();
+      }
+    });
 
-  batchInput.addEventListener('change', (e) => {
-    if (e.target.files.length) {
-      selectedBatchFiles = Array.from(e.target.files);
-      batchFilesLabel.textContent = `${selectedBatchFiles.length} applications selected`;
-      batchFileTag.style.display = 'inline-flex';
-    }
-  });
+    batchInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        selectedBatchFiles = Array.from(e.target.files);
+        if (batchFilesLabel) batchFilesLabel.textContent = `${selectedBatchFiles.length} applications selected`;
+        if (batchFileTag) batchFileTag.style.display = 'inline-flex';
+      }
+    });
+  }
 
-  btnStartUpload.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    if (!selectedBatchFiles.length) return;
+  if (btnStartUpload) {
+    btnStartUpload.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!selectedBatchFiles.length) {
+        alert('Please select files first or click Simulate Batch.');
+        return;
+      }
 
-    showBatchLoading(`Processing ${selectedBatchFiles.length} Inbound Applications in Parallel...`);
-    const formData = new FormData();
-    selectedBatchFiles.forEach(f => formData.append('files', f));
+      showBatchLoading(`Processing ${selectedBatchFiles.length} Inbound Applications in Parallel...`);
+      const formData = new FormData();
+      selectedBatchFiles.forEach(f => formData.append('files', f));
 
-    try {
-      const res = await fetch('/api/v1/batch/screen', {
-        method: 'POST',
-        body: formData
-      });
-      if (!res.ok) throw new Error('Batch upload failed');
-      const data = await res.json();
-      pollBatchResult(data.batch_id);
-    } catch (err) {
-      alert('Error: ' + err.message);
-      hideBatchLoading();
-    }
-  });
+      try {
+        const res = await fetch('/api/v1/batch/screen', {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) throw new Error('Batch upload failed');
+        const data = await res.json();
+        pollBatchResult(data.batch_id);
+      } catch (err) {
+        alert('Error: ' + err.message);
+        hideBatchLoading();
+      }
+    });
+  }
 
   const filterBtns = document.querySelectorAll('.filter-btn');
   filterBtns.forEach(btn => {
@@ -1038,19 +1059,23 @@ function initEmailHub() {
       if (!res.ok) return;
       const data = await res.json();
       if (data.status === 'running') {
-        pollerIndicator.className = 'status-indicator online';
-        pollerText.textContent = `Running (${data.interval_minutes}m)`;
-        btnPollerIcon.textContent = '⏹️';
-        btnPollerText.textContent = 'Stop Poller';
-        btnTogglePoller.classList.remove('btn-primary');
-        btnTogglePoller.classList.add('btn-secondary');
+        if (pollerIndicator) pollerIndicator.className = 'status-indicator online';
+        if (pollerText) pollerText.textContent = `Running (${data.interval_minutes}m)`;
+        if (btnPollerIcon) btnPollerIcon.textContent = '⏹️';
+        if (btnPollerText) btnPollerText.textContent = 'Stop Poller';
+        if (btnTogglePoller) {
+          btnTogglePoller.classList.remove('btn-primary');
+          btnTogglePoller.classList.add('btn-secondary');
+        }
       } else {
-        pollerIndicator.className = 'status-indicator';
-        pollerText.textContent = 'Stopped';
-        btnPollerIcon.textContent = '▶️';
-        btnPollerText.textContent = 'Start Poller';
-        btnTogglePoller.classList.remove('btn-secondary');
-        btnTogglePoller.classList.add('btn-primary');
+        if (pollerIndicator) pollerIndicator.className = 'status-indicator';
+        if (pollerText) pollerText.textContent = 'Stopped';
+        if (btnPollerIcon) btnPollerIcon.textContent = '▶️';
+        if (btnPollerText) btnPollerText.textContent = 'Start Poller';
+        if (btnTogglePoller) {
+          btnTogglePoller.classList.remove('btn-secondary');
+          btnTogglePoller.classList.add('btn-primary');
+        }
       }
     } catch (e) {
       console.warn('Could not fetch scheduler status', e);
@@ -1060,81 +1085,93 @@ function initEmailHub() {
   // Fetch initial poller status
   updatePollerStatusUI();
 
-  btnTogglePoller.addEventListener('click', async () => {
-    try {
-      const interval = parseInt(pollerInterval.value, 10) || 15;
-      const res = await fetch('/api/v1/scheduler/toggle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interval_minutes: interval })
-      });
-      if (!res.ok) throw new Error('Toggle failed');
-      const data = await res.json();
-      alert(`Automated Background Poller is now ${data.status.toUpperCase()} (Interval: ${data.interval_minutes || interval}m)`);
-      updatePollerStatusUI();
-    } catch (e) {
-      alert('Error toggling poller: ' + e.message);
-    }
-  });
+  if (btnTogglePoller) {
+    btnTogglePoller.addEventListener('click', async () => {
+      try {
+        const interval = parseInt(pollerInterval?.value, 10) || 15;
+        const res = await fetch('/api/v1/scheduler/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interval_minutes: interval })
+        });
+        if (!res.ok) throw new Error('Toggle failed');
+        const data = await res.json();
+        alert(`Automated Background Poller is now ${data.status.toUpperCase()} (Interval: ${data.interval_minutes || interval}m)`);
+        updatePollerStatusUI();
+      } catch (e) {
+        alert('Error toggling poller: ' + e.message);
+      }
+    });
+  }
 
-  btnCheckPoller.addEventListener('click', () => {
-    updatePollerStatusUI();
-  });
+  if (btnCheckPoller) {
+    btnCheckPoller.addEventListener('click', () => {
+      updatePollerStatusUI();
+    });
+  }
 
   // Recruiter Morning Digest Dispatchers
   const btnSlackDigest = document.getElementById('btn-send-slack-digest');
   const btnWhatsAppDigest = document.getElementById('btn-send-whatsapp-digest');
   const digestFeedback = document.getElementById('digest-feedback');
 
-  btnSlackDigest.addEventListener('click', async () => {
-    try {
-      btnSlackDigest.disabled = true;
-      btnSlackDigest.innerHTML = '<span>⏳</span> Sending...';
-      const slackUrl = document.getElementById('digest-slack-url').value;
-      const res = await fetch('/api/v1/digest/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel: 'slack',
-          webhook_url: slackUrl
-        })
-      });
-      const data = await res.json();
-      digestFeedback.style.display = 'block';
-      digestFeedback.textContent = `✓ Slack Digest dispatched! ${data.message || 'Blocks rendered and simulated successfully.'}`;
-      setTimeout(() => { digestFeedback.style.display = 'none'; }, 6000);
-    } catch (e) {
-      alert('Slack dispatch error: ' + e.message);
-    } finally {
-      btnSlackDigest.disabled = false;
-      btnSlackDigest.innerHTML = '<span>💬</span> Send Slack Digest';
-    }
-  });
+  if (btnSlackDigest) {
+    btnSlackDigest.addEventListener('click', async () => {
+      try {
+        btnSlackDigest.disabled = true;
+        btnSlackDigest.innerHTML = '<span>⏳</span> Sending...';
+        const slackUrl = document.getElementById('digest-slack-url')?.value || '';
+        const res = await fetch('/api/v1/digest/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channel: 'slack',
+            webhook_url: slackUrl
+          })
+        });
+        const data = await res.json();
+        if (digestFeedback) {
+          digestFeedback.style.display = 'block';
+          digestFeedback.textContent = `✓ Slack Digest dispatched! ${data.message || 'Blocks rendered and simulated successfully.'}`;
+          setTimeout(() => { digestFeedback.style.display = 'none'; }, 6000);
+        }
+      } catch (e) {
+        alert('Slack dispatch error: ' + e.message);
+      } finally {
+        btnSlackDigest.disabled = false;
+        btnSlackDigest.innerHTML = '<span>💬</span> Send Slack Digest';
+      }
+    });
+  }
 
-  btnWhatsAppDigest.addEventListener('click', async () => {
-    try {
-      btnWhatsAppDigest.disabled = true;
-      btnWhatsAppDigest.innerHTML = '<span>⏳</span> Sending...';
-      const phone = document.getElementById('digest-whatsapp-phone').value;
-      const res = await fetch('/api/v1/digest/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel: 'whatsapp',
-          phone_number: phone
-        })
-      });
-      const data = await res.json();
-      digestFeedback.style.display = 'block';
-      digestFeedback.textContent = `✓ WhatsApp Brief generated! ${data.message || 'Simulated brief delivered to recruiter.'}`;
-      setTimeout(() => { digestFeedback.style.display = 'none'; }, 6000);
-    } catch (e) {
-      alert('WhatsApp dispatch error: ' + e.message);
-    } finally {
-      btnWhatsAppDigest.disabled = false;
-      btnWhatsAppDigest.innerHTML = '<span>📱</span> Send WhatsApp Brief';
-    }
-  });
+  if (btnWhatsAppDigest) {
+    btnWhatsAppDigest.addEventListener('click', async () => {
+      try {
+        btnWhatsAppDigest.disabled = true;
+        btnWhatsAppDigest.innerHTML = '<span>⏳</span> Sending...';
+        const phone = document.getElementById('digest-whatsapp-phone')?.value || '';
+        const res = await fetch('/api/v1/digest/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channel: 'whatsapp',
+            phone_number: phone
+          })
+        });
+        const data = await res.json();
+        if (digestFeedback) {
+          digestFeedback.style.display = 'block';
+          digestFeedback.textContent = `✓ WhatsApp Brief generated! ${data.message || 'Simulated brief delivered to recruiter.'}`;
+          setTimeout(() => { digestFeedback.style.display = 'none'; }, 6000);
+        }
+      } catch (e) {
+        alert('WhatsApp dispatch error: ' + e.message);
+      } finally {
+        btnWhatsAppDigest.disabled = false;
+        btnWhatsAppDigest.innerHTML = '<span>📱</span> Send WhatsApp Brief';
+      }
+    });
+  }
 }
 
 // ================= PRICING MODAL =================
@@ -1142,6 +1179,8 @@ function initPricingModal() {
   const modal = document.getElementById('pricing-modal');
   const btnOpen = document.getElementById('btn-open-pricing');
   const btnClose = document.getElementById('btn-close-pricing');
+
+  if (!modal) return;
 
   if (btnOpen) {
     btnOpen.addEventListener('click', () => {
@@ -1169,14 +1208,24 @@ function initDraftModal() {
   const btnOk = document.getElementById('btn-ok-draft');
   const btnCopy = document.getElementById('btn-copy-draft');
 
-  btnClose.addEventListener('click', () => modal.style.display = 'none');
-  btnOk.addEventListener('click', () => modal.style.display = 'none');
+  if (!modal) return;
 
-  btnCopy.addEventListener('click', () => {
-    const text = document.getElementById('modal-body').value;
-    navigator.clipboard.writeText(text);
-    btnCopy.textContent = 'Copied! ✓';
-    setTimeout(() => { btnCopy.textContent = 'Copy Draft'; }, 1800);
+  if (btnClose) btnClose.addEventListener('click', () => modal.style.display = 'none');
+  if (btnOk) btnOk.addEventListener('click', () => modal.style.display = 'none');
+
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      const text = document.getElementById('modal-body')?.value || '';
+      navigator.clipboard.writeText(text);
+      btnCopy.textContent = 'Copied! ✓';
+      setTimeout(() => { btnCopy.textContent = 'Copy Draft'; }, 1800);
+    });
+  }
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.style.display = 'none';
+    }
   });
 }
 
