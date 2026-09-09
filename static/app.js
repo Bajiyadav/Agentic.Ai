@@ -34,7 +34,7 @@ function initSidebarAndTopbar() {
     const isLight = theme === 'light';
     document.documentElement.setAttribute('data-theme', theme);
     document.body.setAttribute('data-theme', theme);
-    localStorage.setItem('auditagent_theme', theme);
+    localStorage.setItem('auditagent_theme_v3', theme);
 
     if (topbarThemeBtn) {
       const icon = topbarThemeBtn.querySelector('.theme-icon-display');
@@ -52,11 +52,11 @@ function initSidebarAndTopbar() {
     }
   }
 
-  const savedTheme = localStorage.getItem('auditagent_theme') || 'dark';
+  const savedTheme = localStorage.getItem('auditagent_theme_v3') || 'light';
   applyTheme(savedTheme);
 
   function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
     const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
     applyTheme(nextTheme);
   }
