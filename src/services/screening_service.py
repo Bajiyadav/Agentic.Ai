@@ -28,6 +28,9 @@ async def screen_candidate_core(
     candidate_email_override: Optional[str] = None,
     linkedin_url_override: Optional[str] = None,
     job_title: str = "Software Engineer",
+    required_skills: Optional[List[str]] = None,
+    min_experience: Optional[float] = None,
+    job_description: Optional[str] = None,
     source: str = "upload",
     actor_id: Optional[uuid.UUID] = None,
     company_name: str = "TechCorp Solutions",
@@ -73,19 +76,264 @@ async def screen_candidate_core(
         if linkedin_url_override and not claims.key_claims:
             claims.key_claims.append(f"LinkedIn: {linkedin_url_override}")
 
-        # Resolve GitHub target username
-        target_github = github_user_override or claims.github_username or "octocat"
+        # 🚨 STEP 3 EARLY TERMINATION: Invalid documents must stop immediately!
+        # Do NOT audit GitHub. Do NOT run LLMs. Do NOT run consensus scoring.
+        if not claims.is_valid_resume:
+            elapsed = round(time.time() - start_time, 2)
+            evidence = GitHubEvidence(
+                username="none",
+                profile_found=False,
+                total_public_repos=0,
+                original_repos_count=0,
+                forked_repos_count=0,
+                total_stars=0,
+                languages_detected={},
+                documentation_ratio=0.0,
+                recent_activity_count=0,
+                audit_notes=["Screening halted: Document validation failed."]
+            )
+
+            # Create clean 0/REJECT scorecard without calling consensus or LLMs
+            from ..agent_3_evaluator import ScreeningScorecard
+            scorecard = ScreeningScorecard(
+                candidate_name=claims.name,
+                github_username="none",
+                target_role=job_title,
+                company_required_skills=required_skills or [],
+                matched_company_skills=[],
+                verified_company_skills=[],
+                missing_company_skills=required_skills or [],
+                company_skills_match_score=0 if required_skills else None,
+                overall_score=0,
+                skills_match_score=0,
+                code_quality_score=0,
+                consistency_score=0,
+                recommendation="REJECT",
+                executive_summary=(
+                    f"Screening HALTED: The uploaded file for '{claims.name}' does not appear to be a professional resume/CV "
+                    f"(detected: {claims.document_type}). Verified 0 candidate claims. "
+                    "Overall score: 0/100 REJECT. Please request submission of a valid resume."
+                ),
+                red_flags=[
+                    "CRITICAL: Uploaded document is NOT a valid professional resume/CV.",
+                    f"Document classified as: {claims.document_type} (e.g. academic lab, exercise, or unrelated document)."
+                ] + claims.validation_flags,
+                green_flags=[],
+                topic_interview_questions=[]
+            )
+
+            # Persist minimal rejected record to DB so recruiter sees the audit entry
+            candidate = Candidate(
+                organization_id=organization_id,
+                name=claims.name,
+                email=claims.email or candidate_email_override,
+                github_username="none",
+                linkedin_url=linkedin_url_override,
+                years_experience=0.0,
+                tags=[]
+            )
+            db.add(candidate)
+            await db.flush()
+
+            resume = Resume(
+                organization_id=organization_id,
+                candidate_id=candidate.id,
+                filename=filename,
+                file_size_bytes=len(file_bytes),
+                mime_type="application/pdf",
+                file_hash=file_hash,
+                raw_text=f"Invalid Document ({claims.document_type}). Parsed {claims.raw_text_length} chars."
+            )
+            db.add(resume)
+            await db.flush()
+
+            application = Application(
+                organization_id=organization_id,
+                candidate_id=candidate.id,
+                job_title=job_title,
+                source=source,
+                status="reject"
+            )
+            db.add(application)
+            await db.flush()
+
+            audit = Audit(
+                organization_id=organization_id,
+                application_id=application.id,
+                candidate_id=candidate.id,
+                overall_score=0,
+                skills_match_score=0,
+                code_quality_score=0,
+                consistency_score=0,
+                ai_recommendation="REJECT",
+                confidence_level="HIGH",
+                needs_manual_review=False,
+                variance_points=0,
+                executive_summary=scorecard.executive_summary,
+                latency_seconds=elapsed
+            )
+            db.add(audit)
+            await db.flush()
+
+            for rf in scorecard.red_flags:
+                db.add(AuditFlag(audit_id=audit.id, flag_type="red", message=rf, severity="critical"))
+
+            db.add(ModelEvaluation(
+                audit_id=audit.id,
+                model_name="Validation Gate",
+                score=0,
+                raw_output_json={"status": "rejected", "document_type": claims.document_type}
+            ))
+
+            # Resubmission notice (NEVER interview invitation!)
+            subject = f"Action Required: Resume Resubmission for {job_title} at {company_name}"
+            body_text = (
+                f"Dear Applicant,\n\n"
+                f"Thank you for your interest in the {job_title} position at {company_name}.\n\n"
+                f"Our automated screening system was unable to evaluate your application because the submitted file does not appear to be a standard resume or CV (detected: {claims.document_type}).\n\n"
+                f"Please reply with your updated professional resume PDF containing your work experience and technical projects so our engineering team can review your qualifications.\n\n"
+                f"Best regards,\nTalent Acquisition Team\n{company_name}"
+            )
+            reply = GeneratedReply(
+                organization_id=organization_id,
+                audit_id=audit.id,
+                candidate_id=candidate.id,
+                recipient_name=claims.name,
+                recipient_email=claims.email or candidate_email_override or "candidate@example.com",
+                subject=subject,
+                body_text=body_text,
+                reply_type="resubmission_request",
+                status="draft",
+                calendly_link=calendly_link
+            )
+            db.add(reply)
+
+            org.monthly_resumes_used += 1
+            db.add(AuditLog(
+                organization_id=organization_id,
+                actor_id=actor_id,
+                action="screen_candidate",
+                target_type="audit",
+                target_id=str(audit.id),
+                details_json={
+                    "candidate_name": claims.name,
+                    "score": 0,
+                    "recommendation": "REJECT",
+                    "document_type": claims.document_type
+                }
+            ))
+
+            from src.db.models import PipelineStage
+            pipeline_stage = PipelineStage(
+                organization_id=organization_id,
+                application_id=application.id,
+                candidate_id=candidate.id,
+                stage="rejected",
+                notes=f"Auto-rejected by Document Validation Gate ({claims.document_type})"
+            )
+            db.add(pipeline_stage)
+
+            await db.commit()
+
+            return {
+                "id": str(audit.id),
+                "audit_id": str(audit.id),
+                "candidate_id": str(candidate.id),
+                "application_id": str(application.id),
+                "candidate_name": claims.name,
+                "candidate_email": claims.email or candidate_email_override,
+                "github_username": "none",
+                "years_experience": 0.0,
+                "is_valid_resume": False,
+                "document_type": claims.document_type,
+                "validation_flags": claims.validation_flags,
+                "overall_score": 0,
+                "recommendation": "REJECT",
+                "skills_match_score": 0,
+                "code_quality_score": 0,
+                "consistency_score": 0,
+                "target_role": job_title,
+                "job_description": job_description,
+                "company_required_skills": required_skills or [],
+                "matched_company_skills": [],
+                "verified_company_skills": [],
+                "missing_company_skills": required_skills or [],
+                "company_skills_match_score": 0 if required_skills else None,
+                "linkedin_url": linkedin_url_override,
+                "confidence_level": "HIGH",
+                "needs_manual_review": False,
+                "variance_points": 0,
+                "executive_summary": scorecard.executive_summary,
+                "red_flags": scorecard.red_flags,
+                "green_flags": [],
+                "topic_interview_questions": [],
+                "consensus_notes": [f"Validation Gate Halted: Document classified as {claims.document_type}."],
+                "model_votes": {"Validation Gate": 0},
+                "claims": claims.model_dump(),
+                "evidence": evidence.model_dump(),
+                "draft_reply": {
+                    "id": str(reply.id),
+                    "subject": reply.subject,
+                    "body_text": reply.body_text,
+                    "reply_type": reply.reply_type,
+                    "status": reply.status
+                },
+                "candidate": {
+                    "name": claims.name,
+                    "email": claims.email or candidate_email_override
+                },
+                "document": {
+                    "is_valid_resume": False,
+                    "document_type": claims.document_type
+                },
+                "scorecard": {
+                    "overall_score": 0,
+                    "recommendation": "REJECT",
+                    "skills_match_score": 0,
+                    "code_quality_score": 0,
+                    "consistency_score": 0
+                },
+                "cached": False,
+                "latency_seconds": elapsed,
+                "screened_at": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+        # Resolve GitHub target username (do not fallback to octocat!)
+        target_github = (github_user_override or claims.github_username or "").strip()
 
         # 4. Audit GitHub Evidence (with smart caching)
-        github_cache = smart_cache.get("github", target_github)
-        if github_cache:
-            evidence = GitHubEvidence(**github_cache)
+        if target_github and target_github.lower() not in ("none", "null", "undefined"):
+            github_cache = smart_cache.get("github", target_github)
+            if github_cache:
+                evidence = GitHubEvidence(**github_cache)
+            else:
+                evidence = audit_github(target_github)
+                smart_cache.set("github", target_github, evidence.model_dump())
         else:
-            evidence = audit_github(target_github)
-            smart_cache.set("github", target_github, evidence.model_dump())
+            evidence = audit_github("")
+            target_github = "none"
 
         # 5. Consensus Multi-Agent Evaluation
-        consensus = run_consensus_evaluation(claims, evidence)
+        consensus = run_consensus_evaluation(
+            claims,
+            evidence,
+            required_skills=required_skills,
+            target_role=job_title,
+            min_experience=min_experience
+        )
+
+        # 🚨 FINAL REINFORCED GATE: Ensure invalid documents ALWAYS score 0 and REJECT
+        if not getattr(claims, "is_valid_resume", True):
+            consensus.scorecard.overall_score = 0
+            consensus.scorecard.skills_match_score = 0
+            consensus.scorecard.code_quality_score = 0
+            consensus.scorecard.consistency_score = 0
+            consensus.scorecard.company_skills_match_score = 0 if required_skills else None
+            consensus.scorecard.recommendation = "REJECT"
+            if not any("NOT a valid" in f for f in consensus.scorecard.red_flags):
+                consensus.scorecard.red_flags.insert(0, "CRITICAL: Uploaded document is NOT a valid professional resume/CV.")
+            consensus.model_votes = {k: 0 for k in consensus.model_votes}
+
         elapsed = round(time.time() - start_time, 2)
 
         # 6. Database Persistence
@@ -216,7 +464,17 @@ async def screen_candidate_core(
             ))
 
         # 6i. Draft Recruiter Reply (strictly in 'draft' status for human-in-the-loop review)
-        if consensus.scorecard.recommendation == "SHORTLIST":
+        if not getattr(claims, "is_valid_resume", True):
+            subject = f"Action Required: Resume Resubmission for {job_title} at {company_name}"
+            body_text = (
+                f"Dear Applicant,\n\n"
+                f"Thank you for your interest in the {job_title} position at {company_name}.\n\n"
+                f"Our automated screening system was unable to evaluate your application because the submitted file does not appear to be a standard resume or CV (detected coursework, assignment sheet, or unformatted text).\n\n"
+                f"Please reply with your updated resume PDF containing your work experience and technical projects so our engineering team can review your qualifications.\n\n"
+                f"Best regards,\nTalent Acquisition Team\n{company_name}"
+            )
+            reply_type = "resubmission_request"
+        elif consensus.scorecard.recommendation == "SHORTLIST":
             subject = f"Interview Invitation: {job_title} at {company_name}"
             body_text = (
                 f"Hi {claims.name},\n\n"
@@ -300,21 +558,48 @@ async def screen_candidate_core(
             "candidate_email": claims.email or candidate_email_override,
             "github_username": target_github,
             "years_experience": claims.years_experience,
+            "is_valid_resume": getattr(claims, "is_valid_resume", True),
+            "document_type": getattr(claims, "document_type", "RESUME"),
+            "validation_flags": getattr(claims, "validation_flags", []),
             "overall_score": consensus.scorecard.overall_score,
             "recommendation": consensus.scorecard.recommendation,
             "skills_match_score": consensus.scorecard.skills_match_score,
             "code_quality_score": consensus.scorecard.code_quality_score,
             "consistency_score": consensus.scorecard.consistency_score,
+            "target_role": consensus.scorecard.target_role or job_title,
+            "job_description": job_description,
+            "company_required_skills": consensus.scorecard.company_required_skills,
+            "matched_company_skills": consensus.scorecard.matched_company_skills,
+            "verified_company_skills": consensus.scorecard.verified_company_skills,
+            "missing_company_skills": consensus.scorecard.missing_company_skills,
+            "company_skills_match_score": consensus.scorecard.company_skills_match_score,
+            "linkedin_url": linkedin_url_override or (candidate.linkedin_url if candidate else None),
             "confidence_level": consensus.confidence_level,
             "needs_manual_review": consensus.needs_manual_review,
             "variance_points": consensus.variance_points,
             "executive_summary": consensus.scorecard.executive_summary,
             "red_flags": consensus.scorecard.red_flags,
             "green_flags": consensus.scorecard.green_flags,
+            "topic_interview_questions": [q.model_dump() for q in getattr(consensus.scorecard, "topic_interview_questions", [])],
             "consensus_notes": consensus.consensus_notes,
             "model_votes": consensus.model_votes,
             "claims": claims.model_dump(),
             "evidence": evidence.model_dump(),
+            "candidate": {
+                "name": claims.name,
+                "email": claims.email or candidate_email_override
+            },
+            "document": {
+                "is_valid_resume": True,
+                "document_type": getattr(claims, "document_type", "RESUME")
+            },
+            "scorecard": {
+                "overall_score": consensus.scorecard.overall_score,
+                "recommendation": consensus.scorecard.recommendation,
+                "skills_match_score": consensus.scorecard.skills_match_score,
+                "code_quality_score": consensus.scorecard.code_quality_score,
+                "consistency_score": consensus.scorecard.consistency_score
+            },
             "draft_reply": {
                 "id": str(reply.id),
                 "subject": reply.subject,

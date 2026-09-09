@@ -36,11 +36,46 @@ def _call_single_model(model_name: str, prompt: str, api_key: str) -> Dict[str, 
         content = "\n".join([line for line in lines if not line.strip().startswith("```")])
     return json.loads(content)
 
-def run_consensus_evaluation(claims: CandidateClaims, evidence: GitHubEvidence) -> ConsensusResult:
+def run_consensus_evaluation(
+    claims: CandidateClaims,
+    evidence: GitHubEvidence,
+    required_skills: Optional[List[str]] = None,
+    target_role: Optional[str] = None,
+    min_experience: Optional[float] = None
+) -> ConsensusResult:
     """Evaluates candidate using multi-model consensus and anomaly detection."""
     # 1. Always compute rule-based baseline
-    baseline = _deterministic_evaluator(claims, evidence)
-    
+    baseline = _deterministic_evaluator(
+        claims,
+        evidence,
+        required_skills=required_skills,
+        target_role=target_role,
+        min_experience=min_experience
+    )
+
+    # 🚨 VALIDATION GATE: If document is invalid or baseline score is 0, halt consensus immediately!
+    if not getattr(claims, "is_valid_resume", True) or baseline.overall_score == 0:
+        baseline.overall_score = 0
+        baseline.skills_match_score = 0
+        baseline.code_quality_score = 0
+        baseline.consistency_score = 0
+        baseline.recommendation = "REJECT"
+        return ConsensusResult(
+            scorecard=baseline,
+            confidence_level="HIGH",
+            needs_manual_review=False,
+            variance_points=0,
+            consensus_notes=[
+                "Validation Gate Halted: Uploaded document is NOT a valid professional resume/CV.",
+                f"Classification: {getattr(claims, 'document_type', 'UNRELATED_DOCUMENT')}"
+            ],
+            model_votes={
+                "Rule Engine": 0,
+                "Qwen 2.5 Coder": 0,
+                "Nemotron 3": 0
+            }
+        )
+
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     use_mock = os.getenv("USE_MOCK_FALLBACK", "true").lower() == "true"
     is_placeholder = "placeholder" in api_key.lower() or not api_key.strip()

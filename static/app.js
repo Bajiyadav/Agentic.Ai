@@ -185,6 +185,30 @@ function initSingleAudit() {
   initChips();
   initForm();
   initDemoSample();
+  initInvalidDocumentActions();
+}
+
+function initInvalidDocumentActions() {
+  const btnUpload = document.getElementById('btn-invalid-upload-resume');
+  const btnReset = document.getElementById('btn-invalid-reset-all');
+  const fileInput = document.getElementById('resume-input');
+
+  if (btnUpload) {
+    btnUpload.addEventListener('click', () => {
+      showPlaceholderState();
+      fileInput?.click();
+    });
+  }
+
+  if (btnReset) {
+    btnReset.addEventListener('click', () => {
+      currentSelectedFile = null;
+      if (fileInput) fileInput.value = '';
+      const fileTag = document.getElementById('file-tag');
+      if (fileTag) fileTag.style.display = 'none';
+      showPlaceholderState();
+    });
+  }
 }
 
 function initDropzone() {
@@ -306,6 +330,10 @@ function initForm() {
       }
 
       const githubUser = document.getElementById('github-username')?.value.trim() || '';
+      const targetRole = document.getElementById('target-role')?.value.trim() || '';
+      const jobDescription = document.getElementById('job-description')?.value.trim() || '';
+      const requiredSkills = document.getElementById('required-skills')?.value.trim() || '';
+      const linkedinUrl = document.getElementById('linkedin-url')?.value.trim() || '';
       const webhookUrl = document.getElementById('webhook-url')?.value.trim() || '';
 
       showLoadingState();
@@ -313,6 +341,10 @@ function initForm() {
       const formData = new FormData();
       formData.append('file', currentSelectedFile);
       if (githubUser) formData.append('github_username', githubUser);
+      if (targetRole) formData.append('target_role', targetRole);
+      if (jobDescription) formData.append('job_description', jobDescription);
+      if (requiredSkills) formData.append('required_skills', requiredSkills);
+      if (linkedinUrl) formData.append('linkedin_url', linkedinUrl);
       if (webhookUrl) formData.append('webhook_url', webhookUrl);
 
       try {
@@ -353,50 +385,211 @@ function initForm() {
       downloadAnchor.remove();
     });
   }
+
+  const jdEl = document.getElementById('job-description');
+  const jdWordCount = document.getElementById('jd-word-count');
+
+  function updateJdWordCount() {
+    if (!jdEl || !jdWordCount) return;
+    const text = jdEl.value.trim();
+    if (!text) {
+      jdWordCount.textContent = '0 words';
+      return;
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    jdWordCount.textContent = `${words} words (${text.length} chars)`;
+  }
+
+  if (jdEl) {
+    jdEl.addEventListener('input', updateJdWordCount);
+  }
+
+  const btnSampleJd = document.getElementById('btn-paste-sample-jd');
+  if (btnSampleJd) {
+    btnSampleJd.addEventListener('click', () => {
+      const roleEl = document.getElementById('target-role');
+      const skillsEl = document.getElementById('required-skills');
+      if (jdEl) {
+        jdEl.value = 'We are hiring a Senior Full-Stack Engineer with 3+ years of experience in Python, TypeScript, React, and Docker to scale our cloud-native web platform. The candidate will architect robust APIs, manage PostgreSQL databases, and lead frontend feature delivery.';
+        updateJdWordCount();
+      }
+      if (roleEl && !roleEl.value) {
+        roleEl.value = 'Senior Full-Stack Engineer';
+      }
+      if (skillsEl && !skillsEl.value) {
+        skillsEl.value = 'Python, TypeScript, React, Docker';
+      }
+    });
+  }
+
+  const btnLinkedInJd = document.getElementById('btn-paste-linkedin-jd');
+  if (btnLinkedInJd) {
+    btnLinkedInJd.addEventListener('click', () => {
+      const roleEl = document.getElementById('target-role');
+      const skillsEl = document.getElementById('required-skills');
+      const sampleLinkedInPost = `About the Company:
+TechCorp Enterprise is an industry-leading AI & data engineering platform serving Fortune 500 customers globally. We are expanding our core platform engineering organization and seeking an experienced Senior Full-Stack Engineer.
+
+About the Role:
+As a Senior Full-Stack Engineer, you will drive architecture and development across high-throughput distributed microservices, secure REST/GraphQL APIs, and modern responsive user interfaces.
+
+Key Responsibilities:
+- Design, build, and maintain production backend microservices and responsive web applications.
+- Collaborate with product managers, designers, and engineering leaders to deliver end-to-end features.
+- Build automated test suites and ensure high reliability, observability, and performance.
+
+Basic Qualifications & Requirements:
+- 4+ years of professional software engineering experience.
+- Strong proficiency in Python, TypeScript, and modern JavaScript.
+- Demonstrated experience with backend frameworks such as FastAPI, Django, or Node.js.
+- Strong practical experience with Docker containerization and relational databases (PostgreSQL, MySQL).
+- Experience with CI/CD automation, testing frameworks, and Git workflows.
+
+Preferred Qualifications & Nice-to-Haves:
+- Experience with Kubernetes orchestration and cloud platforms (AWS, GCP).
+- Familiarity with Redis in-memory caching and Apache Kafka event streaming.
+- Contributions to open-source software or public code repositories demonstrating clean architecture.`;
+
+      if (jdEl) {
+        jdEl.value = sampleLinkedInPost;
+        updateJdWordCount();
+      }
+      if (roleEl) {
+        roleEl.value = 'Senior Full-Stack Engineer';
+      }
+      if (skillsEl) {
+        skillsEl.value = 'Python, TypeScript, React, Docker, PostgreSQL';
+      }
+    });
+  }
+
+  const btnClearJd = document.getElementById('btn-clear-jd');
+  if (btnClearJd) {
+    btnClearJd.addEventListener('click', () => {
+      if (jdEl) {
+        jdEl.value = '';
+        updateJdWordCount();
+      }
+    });
+  }
+
+  const presetBackend = document.getElementById('preset-backend');
+  if (presetBackend) {
+    presetBackend.addEventListener('click', () => {
+      const roleEl = document.getElementById('target-role');
+      const skillsEl = document.getElementById('required-skills');
+      if (roleEl) roleEl.value = 'Senior Backend Engineer';
+      if (skillsEl) skillsEl.value = 'Python, FastAPI, Docker, PostgreSQL';
+    });
+  }
+  const presetFullstack = document.getElementById('preset-fullstack');
+  if (presetFullstack) {
+    presetFullstack.addEventListener('click', () => {
+      const roleEl = document.getElementById('target-role');
+      const skillsEl = document.getElementById('required-skills');
+      if (roleEl) roleEl.value = 'Full-Stack Engineer';
+      if (skillsEl) skillsEl.value = 'React, TypeScript, Node.js, Next.js';
+    });
+  }
 }
 
 async function pollForResult(taskId) {
   const stages = [
-    { title: "Parsing Resume PDF...", sub: "Extracting skills taxonomy & contact details" },
-    { title: "Auditing Public GitHub Profile...", sub: "Measuring stars, commit recency & original repos" },
-    { title: "Running Multi-Model Consensus...", sub: "Evaluating claim vs evidence consistency" }
+    { title: '✓ Security Verification...', detail: 'Verifying PDF magic headers and payload integrity' },
+    { title: '✓ Validating Document Taxonomy...', detail: 'Classifying document against academic and resume signals' },
+    { title: '→ Parsing Candidate Claims...', detail: 'Extracting proficiencies, experience and architecture claims' },
+    { title: '→ Auditing Verified GitHub Evidence...', detail: 'Checking public repositories, original code, and commit velocity' },
+    { title: '→ Evaluating Consensus & Final Score...', detail: 'Cross-verifying claims vs evidence to compute final assessment' }
   ];
-  let stageIdx = 0;
 
-  const interval = setInterval(async () => {
+  let currentStageIdx = 0;
+  const stageTitle = document.getElementById('loading-stage');
+  const stageDetail = document.getElementById('loading-detail');
+  const progressBar = document.getElementById('progress-bar');
+
+  const stageInterval = setInterval(() => {
+    currentStageIdx = (currentStageIdx + 1) % stages.length;
+    if (stageTitle) stageTitle.textContent = stages[currentStageIdx].title;
+    if (stageDetail) stageDetail.textContent = stages[currentStageIdx].detail;
+    if (progressBar) progressBar.style.width = `${Math.min(95, (currentStageIdx + 1) * 20)}%`;
+  }, 900);
+
+  const pollInterval = setInterval(async () => {
     try {
-      if (stageIdx < stages.length) {
-        document.getElementById('loading-stage').textContent = stages[stageIdx].title;
-        document.getElementById('loading-detail').textContent = stages[stageIdx].sub;
-        stageIdx++;
-      }
-
-      const res = await fetch(`/api/v1/results/${taskId}`);
+      const res = await fetch(`/api/v1/screen/${taskId}`);
       if (!res.ok) return;
 
       const data = await res.json();
       if (data.status === 'completed') {
-        clearInterval(interval);
-        renderScorecard(data.result);
-        fetchHealth();
-        fetchHistory();
+        clearInterval(pollInterval);
+        clearInterval(stageInterval);
+        if (progressBar) progressBar.style.width = '100%';
+        setTimeout(() => {
+          hideLoadingState();
+          const isInvalid = data.result.is_valid_resume === false || (data.result.document && data.result.document.is_valid_resume === false);
+          if (isInvalid) {
+            showInvalidDocumentState(data.result);
+          } else {
+            renderScorecard(data.result);
+            showResultState();
+          }
+          loadRecruitmentKanban();
+          loadScreeningHistory();
+        }, 300);
       } else if (data.status === 'failed') {
-        clearInterval(interval);
-        alert('Screening error: ' + (data.error || 'Unknown failure'));
+        clearInterval(pollInterval);
+        clearInterval(stageInterval);
+        alert('Screening pipeline failed: ' + (data.error || 'Unknown error'));
         showPlaceholderState();
       }
     } catch (e) {
       console.error('Polling error', e);
     }
-  }, 1200);
+  }, 1000);
 }
 
 function renderScorecard(result) {
+  const isInvalidDoc = result.is_valid_resume === false || (result.document && result.document.is_valid_resume === false) || (result.candidate_name || '').toLowerCase().includes('non-resume');
+  if (isInvalidDoc) {
+    showInvalidDocumentState(result);
+    return;
+  }
+
   currentScorecardData = result;
 
   document.getElementById('res-candidate-name').textContent = result.candidate_name;
   document.getElementById('res-github-link').textContent = `@${result.github_username}`;
   document.getElementById('res-experience').textContent = `${result.years_experience || '3.0'} yrs experience`;
+
+  // Target Role
+  const targetRoleEl = document.getElementById('res-target-role');
+  if (targetRoleEl) {
+    if (result.target_role) {
+      targetRoleEl.textContent = result.target_role;
+      targetRoleEl.style.display = 'inline-block';
+    } else {
+      targetRoleEl.style.display = 'none';
+    }
+  }
+
+  // LinkedIn Verification Link
+  const linkedinSep = document.getElementById('res-linkedin-sep');
+  const linkedinLink = document.getElementById('res-linkedin-link');
+  const linkedinAnchor = document.getElementById('res-linkedin-anchor');
+  if (linkedinLink && linkedinAnchor) {
+    if (result.linkedin_url) {
+      let lUrl = result.linkedin_url;
+      if (!lUrl.startsWith('http')) {
+        lUrl = lUrl.startsWith('linkedin.com') ? `https://${lUrl}` : `https://linkedin.com/in/${lUrl}`;
+      }
+      linkedinAnchor.href = lUrl;
+      linkedinLink.style.display = 'inline-flex';
+      if (linkedinSep) linkedinSep.style.display = 'inline';
+    } else {
+      linkedinLink.style.display = 'none';
+      if (linkedinSep) linkedinSep.style.display = 'none';
+    }
+  }
   
   const speedBadge = document.getElementById('res-speed-badge');
   if (result.cached) {
@@ -408,10 +601,10 @@ function renderScorecard(result) {
   }
 
   const recBadge = document.getElementById('res-rec-badge');
-  recBadge.textContent = result.recommendation;
-  recBadge.className = 'rec-badge ' + result.recommendation.toLowerCase();
+  recBadge.textContent = isInvalidDoc ? 'REJECT' : result.recommendation;
+  recBadge.className = 'rec-badge ' + (isInvalidDoc ? 'reject' : result.recommendation.toLowerCase());
 
-  const overall = result.overall_score;
+  const overall = isInvalidDoc ? 0 : result.overall_score;
   const scoreCircle = document.getElementById('score-circle');
   document.getElementById('res-overall-score').textContent = overall;
 
@@ -423,6 +616,11 @@ function renderScorecard(result) {
   }
   scoreCircle.style.borderColor = color;
   scoreCircle.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.08)';
+  if (isInvalidDoc) {
+    scoreCircle.style.backgroundColor = '#fee2e2';
+  } else {
+    scoreCircle.style.backgroundColor = 'transparent';
+  }
   document.getElementById('res-overall-score').style.color = color;
 
   document.getElementById('res-executive-summary').textContent = result.executive_summary;
@@ -435,6 +633,90 @@ function renderScorecard(result) {
 
   document.getElementById('res-consistency-score').textContent = `${result.consistency_score}%`;
   document.getElementById('res-consistency-bar').style.width = `${result.consistency_score}%`;
+
+  // Company Required Skills Gap Analysis Section
+  const companySection = document.getElementById('company-skills-section');
+  const skillsGapGrid = document.getElementById('res-skills-gap-grid');
+  const companyMatchBadge = document.getElementById('res-company-match-badge');
+
+  if (companySection && skillsGapGrid && result.company_required_skills && result.company_required_skills.length > 0) {
+    companySection.style.display = 'block';
+    const matchScore = (result.company_skills_match_score !== null && result.company_skills_match_score !== undefined)
+      ? result.company_skills_match_score
+      : result.skills_match_score;
+    
+    if (companyMatchBadge) {
+      companyMatchBadge.textContent = `Role Match: ${matchScore}%`;
+      companyMatchBadge.style.background = matchScore >= 75 ? 'rgba(34, 197, 94, 0.15)' : (matchScore >= 50 ? 'rgba(234, 179, 8, 0.15)' : 'rgba(239, 68, 68, 0.15)');
+      companyMatchBadge.style.color = matchScore >= 75 ? 'var(--color-success)' : (matchScore >= 50 ? 'var(--color-warning)' : 'var(--color-danger)');
+    }
+
+    const jdContainer = document.getElementById('res-jd-preview-container');
+    const jdText = document.getElementById('res-jd-preview-text');
+    const jdRoleTag = document.getElementById('res-jd-role-tag');
+    const btnToggleJd = document.getElementById('btn-toggle-full-jd');
+    if (jdContainer && jdText) {
+      if (result.job_description) {
+        jdContainer.style.display = 'block';
+        jdText.textContent = result.job_description;
+        if (jdRoleTag) jdRoleTag.textContent = result.target_role || 'Target Role';
+        
+        let isExpanded = false;
+        jdText.style.maxHeight = '70px';
+        if (btnToggleJd) {
+          btnToggleJd.textContent = 'Show More ▾';
+          btnToggleJd.onclick = () => {
+            isExpanded = !isExpanded;
+            jdText.style.maxHeight = isExpanded ? '500px' : '70px';
+            btnToggleJd.textContent = isExpanded ? 'Show Less ▴' : 'Show More ▾';
+          };
+        }
+      } else {
+        jdContainer.style.display = 'none';
+      }
+    }
+
+    skillsGapGrid.innerHTML = '';
+    result.company_required_skills.forEach(skill => {
+      const isVerified = (result.verified_company_skills || []).includes(skill);
+      const isClaimed = (result.matched_company_skills || []).includes(skill);
+
+      let statusBadge, statusDesc, borderLeft;
+      if (isVerified) {
+        statusBadge = '<span style="background: rgba(34, 197, 94, 0.15); color: var(--color-success); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">✓ VERIFIED IN CODE</span>';
+        statusDesc = '<span style="font-size: 0.8rem; color: var(--color-text-muted);">Proven in public GitHub repositories</span>';
+        borderLeft = 'border-left: 3px solid var(--color-success);';
+      } else if (isClaimed) {
+        statusBadge = '<span style="background: rgba(234, 179, 8, 0.15); color: var(--color-warning); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">⚠ CLAIMED ONLY</span>';
+        statusDesc = '<span style="font-size: 0.8rem; color: var(--color-text-muted);">Asserted on resume, but 0 public code evidence</span>';
+        borderLeft = 'border-left: 3px solid var(--color-warning);';
+      } else {
+        statusBadge = '<span style="background: rgba(239, 68, 68, 0.15); color: var(--color-danger); padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.75rem;">✗ MISSING</span>';
+        statusDesc = '<span style="font-size: 0.8rem; color: var(--color-text-muted);">Absent from both resume claims and code</span>';
+        borderLeft = 'border-left: 3px solid var(--color-danger);';
+      }
+
+      const row = document.createElement('div');
+      row.style = `display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--color-surface-hover); border-radius: 8px; ${borderLeft}`;
+      row.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <strong style="font-size: 0.9rem; color: var(--color-text);">${skill}</strong>
+          ${statusDesc}
+        </div>
+        ${statusBadge}
+      `;
+      skillsGapGrid.appendChild(row);
+    });
+
+    const skillsLabel = document.getElementById('res-skills-label');
+    if (skillsLabel) skillsLabel.textContent = 'Company Match';
+    document.getElementById('res-skills-score').textContent = `${matchScore}%`;
+    document.getElementById('res-skills-bar').style.width = `${matchScore}%`;
+  } else if (companySection) {
+    companySection.style.display = 'none';
+    const skillsLabel = document.getElementById('res-skills-label');
+    if (skillsLabel) skillsLabel.textContent = 'Skills Match';
+  }
 
   const redFlagsUl = document.getElementById('res-red-flags');
   redFlagsUl.innerHTML = '';
@@ -476,6 +758,74 @@ function renderScorecard(result) {
       row.className = 'vote-item';
       row.innerHTML = `<span>${mName}</span><span class="vote-score">${score}/100</span>`;
       votesBox.appendChild(row);
+    }
+  }
+
+  // Topic-Focused Interview Questions Section
+  const topicSection = document.getElementById('topic-questions-section');
+  const topicGrid = document.getElementById('res-topic-questions-grid');
+  const btnCopyGuide = document.getElementById('btn-copy-interview-guide');
+
+  if (topicSection && topicGrid) {
+    const questions = result.topic_interview_questions || [];
+    if (questions.length > 0) {
+      topicSection.style.display = 'block';
+      topicGrid.innerHTML = '';
+
+      questions.forEach((q) => {
+        const card = document.createElement('div');
+        card.style = 'padding: 14px 16px; background: var(--color-surface-hover); border-radius: 10px; border-left: 4px solid var(--color-warning); display: flex; flex-direction: column; gap: 8px;';
+        
+        let statusTag = '<span style="background: rgba(234, 179, 8, 0.15); color: var(--color-warning); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">CLAIMED WITHOUT CODE</span>';
+        if (q.status === 'MISSING_MANDATORY') {
+          statusTag = '<span style="background: rgba(239, 68, 68, 0.15); color: var(--color-danger); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">MISSING MANDATORY</span>';
+          card.style.borderLeftColor = 'var(--color-danger)';
+        } else if (q.status === 'EXPERIENCE_GAP') {
+          statusTag = '<span style="background: rgba(249, 115, 22, 0.15); color: #f97316; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">EXPERIENCE GAP</span>';
+          card.style.borderLeftColor = '#f97316';
+        } else if (q.status === 'CODE_HEALTH') {
+          statusTag = '<span style="background: rgba(168, 85, 247, 0.15); color: #a855f7; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">CODE HEALTH</span>';
+          card.style.borderLeftColor = '#a855f7';
+        }
+
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 0.95rem; color: var(--color-text);">Topic: ${q.topic}</strong>
+              ${statusTag}
+            </div>
+            <span style="font-size: 0.75rem; color: var(--color-text-muted);">Difficulty: <strong>${q.difficulty}</strong></span>
+          </div>
+          <p style="margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--color-text); line-height: 1.45;">
+            "${q.question}"
+          </p>
+          <div style="font-size: 0.78rem; color: var(--color-text-muted); background: var(--color-surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--color-border);">
+            <div style="margin-bottom: 4px;"><strong>• Why Ask:</strong> ${q.rationale}</div>
+            <div><strong style="color: var(--color-success);">• Listen For:</strong> ${q.ideal_response_guide}</div>
+          </div>
+        `;
+        topicGrid.appendChild(card);
+      });
+
+      if (btnCopyGuide) {
+        btnCopyGuide.onclick = () => {
+          let guideText = `TECHNICAL INTERVIEW GUIDE: ${result.candidate_name} (${result.target_role || 'Candidate'})\nOverall Score: ${result.overall_score}/100 | Recommendation: ${result.recommendation}\n\n`;
+          questions.forEach((q, i) => {
+            guideText += `[Question ${i+1}: Topic: ${q.topic} - ${q.status}]\n`;
+            guideText += `Q: ${q.question}\n`;
+            guideText += `Why Ask: ${q.rationale}\n`;
+            guideText += `Listen For: ${q.ideal_response_guide}\n\n`;
+          });
+          navigator.clipboard.writeText(guideText).then(() => {
+            btnCopyGuide.textContent = '✓ Copied!';
+            setTimeout(() => { btnCopyGuide.textContent = '📋 Copy Interview Guide'; }, 2000);
+          }).catch(() => {
+            alert('Copied to clipboard:\n\n' + guideText);
+          });
+        };
+      }
+    } else {
+      topicSection.style.display = 'none';
     }
   }
 
@@ -712,18 +1062,80 @@ function showPlaceholderState() {
   document.getElementById('state-placeholder').style.display = 'flex';
   document.getElementById('state-loading').style.display = 'none';
   document.getElementById('state-result').style.display = 'none';
+  const inv = document.getElementById('state-invalid-document');
+  if (inv) inv.style.display = 'none';
 }
 
 function showLoadingState() {
   document.getElementById('state-placeholder').style.display = 'none';
   document.getElementById('state-loading').style.display = 'flex';
   document.getElementById('state-result').style.display = 'none';
+  const inv = document.getElementById('state-invalid-document');
+  if (inv) inv.style.display = 'none';
 }
 
 function showResultState() {
   document.getElementById('state-placeholder').style.display = 'none';
   document.getElementById('state-loading').style.display = 'none';
   document.getElementById('state-result').style.display = 'block';
+  const inv = document.getElementById('state-invalid-document');
+  if (inv) inv.style.display = 'none';
+}
+
+function showInvalidDocumentState(result) {
+  currentScorecardData = result;
+  document.getElementById('state-placeholder').style.display = 'none';
+  document.getElementById('state-loading').style.display = 'none';
+  document.getElementById('state-result').style.display = 'none';
+  const inv = document.getElementById('state-invalid-document');
+  if (inv) inv.style.display = 'block';
+
+  // Detected type badge
+  const docType = result.document_type || (result.document && result.document.document_type) || 'ACADEMIC_LAB_OR_EXERCISE';
+  const typeBadge = document.getElementById('invalid-doc-type-badge');
+  if (typeBadge) typeBadge.textContent = docType;
+
+  // Description
+  const descEl = document.getElementById('invalid-doc-main-desc');
+  if (descEl) {
+    if (docType === 'ACADEMIC_LAB_OR_EXERCISE') {
+      descEl.textContent = 'The anti-fraud document validator detected academic coursework, lab manual instructions, or practical exercises instead of professional career history. Technical claims were not evaluated and scoring was halted at 0/100 REJECT.';
+    } else if (docType === 'EMPTY_OR_CORRUPT') {
+      descEl.textContent = 'The uploaded document contains insufficient text or appears corrupt. Please ensure you upload a readable, text-based PDF.';
+    } else {
+      descEl.textContent = `The uploaded file does not appear to be a standard candidate resume/CV (classified as ${docType}). Please upload a valid professional resume.`;
+    }
+  }
+
+  // Reasons list
+  const reasonsList = document.getElementById('invalid-doc-reasons-list');
+  if (reasonsList) {
+    reasonsList.innerHTML = '';
+    const flags = (result.red_flags && result.red_flags.length > 0)
+      ? result.red_flags
+      : ((result.validation_flags && result.validation_flags.length > 0)
+        ? result.validation_flags
+        : ['Document matches academic lab/exercise markers.', 'No candidate work experience, education, or skills sections found.']);
+
+    flags.forEach(f => {
+      const li = document.createElement('li');
+      li.style.cssText = 'padding: 10px 14px; background: rgba(239, 68, 68, 0.08); border-radius: 8px; border-left: 3px solid #ef4444; font-size: 0.85rem; color: var(--color-text);';
+      li.textContent = f;
+      reasonsList.appendChild(li);
+    });
+  }
+
+  // Hook reply draft viewer
+  const btnViewReply = document.getElementById('btn-invalid-view-reply');
+  if (btnViewReply) {
+    btnViewReply.onclick = () => {
+      if (result.draft_reply) {
+        openDraftModal(result.draft_reply);
+      } else {
+        alert('Resubmission notice draft created for applicant.');
+      }
+    };
+  }
 }
 
 // ================= BATCH AUDIT LOGIC =================
@@ -1240,17 +1652,32 @@ function openDraftModalForCandidate(event, candidateName) {
   if (!candidate) return;
 
   const modal = document.getElementById('draft-modal');
+  const cleanName = (candidate.candidate_name || '').replace(/^[#\s\*\-_>]+/g, '').trim() || 'Applicant';
+  const nameWords = cleanName.split(/\s+/);
+  const firstName = (nameWords[0] && !['non-resume', 'invalid', 'document', 'candidate', 'applicant'].includes(nameWords[0].toLowerCase()))
+    ? nameWords[0]
+    : 'Applicant';
+
+  const isInvalidDoc = candidate.overall_score === 0 || (candidate.candidate_name || '').toLowerCase().includes('non-resume');
   const draft = candidate.email_draft || {
-    recipient_email: `${candidate.candidate_name.toLowerCase().replace(/\s+/g, '.')}@example.com`,
-    subject: `Update regarding your application for Software Engineer`,
-    body_text: `Hi ${candidate.candidate_name.split(' ')[0]},\n\nThank you for applying. We are reviewing your technical profile.`
+    recipient_email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@example.com`,
+    subject: isInvalidDoc
+      ? `Action Required: Resume Submission for Software Engineer`
+      : `Update regarding your application for Software Engineer`,
+    body_text: isInvalidDoc
+      ? `Dear Applicant,\n\nThank you for your interest in TechCorp Solutions. The uploaded file appears to be coursework, an assignment, or an unformatted document rather than a standard resume.\n\nPlease reply with your updated resume PDF so our engineering team can review your qualifications.\n\nBest regards,\nTalent Acquisition Team`
+      : `Hi ${firstName},\n\nThank you for applying. We are reviewing your technical profile.`
   };
 
-  document.getElementById('modal-draft-title').textContent = candidate.recommendation === 'SHORTLIST'
-    ? `🟢 Auto-Drafted Interview Invitation (${candidate.candidate_name})`
-    : `🔴 Auto-Drafted Rejection Email (${candidate.candidate_name})`;
+  let titleText = `🔴 Auto-Drafted Rejection Email (${cleanName})`;
+  if (isInvalidDoc) {
+    titleText = `⚠️ Auto-Drafted Document Resubmission Notice (${cleanName})`;
+  } else if (candidate.recommendation === 'SHORTLIST') {
+    titleText = `🟢 Auto-Drafted Interview Invitation (${cleanName})`;
+  }
 
-  document.getElementById('modal-recipient').textContent = draft.recipient_email || `${candidate.candidate_name.toLowerCase().replace(/\s+/g, '.')}@example.com`;
+  document.getElementById('modal-draft-title').textContent = titleText;
+  document.getElementById('modal-recipient').textContent = draft.recipient_email || 'applicant@example.com';
   document.getElementById('modal-subject').value = draft.subject;
   document.getElementById('modal-body').value = draft.body_text;
 
@@ -1301,7 +1728,13 @@ async function fetchHistory() {
 
       row.addEventListener('click', () => {
         document.getElementById('tab-single-btn').click();
-        renderScorecard(item);
+        const isInvalid = item.is_valid_resume === false || (item.document && item.document.is_valid_resume === false) || (item.candidate_name || '').toLowerCase().includes('non-resume');
+        if (isInvalid) {
+          showInvalidDocumentState(item);
+        } else {
+          renderScorecard(item);
+          showResultState();
+        }
         window.scrollTo({ top: 120, behavior: 'smooth' });
       });
 

@@ -81,7 +81,12 @@ async def _process_screening_task(
     filename: str,
     github_user_override: Optional[str],
     webhook_url: Optional[str],
-    actor_id: Optional[uuid.UUID] = None
+    actor_id: Optional[uuid.UUID] = None,
+    target_role: Optional[str] = None,
+    required_skills: Optional[List[str]] = None,
+    min_experience: Optional[float] = None,
+    linkedin_url: Optional[str] = None,
+    job_description: Optional[str] = None
 ):
     start_time = time.time()
     try:
@@ -94,6 +99,11 @@ async def _process_screening_task(
                 file_bytes=file_bytes,
                 filename=filename,
                 github_user_override=github_user_override,
+                linkedin_url_override=linkedin_url,
+                job_title=target_role or "Software Engineer",
+                required_skills=required_skills,
+                min_experience=min_experience,
+                job_description=job_description,
                 actor_id=actor_id
             )
             result_payload["task_id"] = task_id
@@ -127,10 +137,15 @@ async def screen_resume_endpoint(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     github_username: Optional[str] = Form(None),
+    target_role: Optional[str] = Form(None),
+    job_description: Optional[str] = Form(None),
+    required_skills: Optional[str] = Form(None),
+    min_experience: Optional[float] = Form(None),
+    linkedin_url: Optional[str] = Form(None),
     webhook_url: Optional[str] = Form(None),
     tenant: TenantContext = Depends(get_tenant_or_demo_context)
 ):
-    """Submits a candidate resume for asynchronous screening with PostgreSQL persistence and tenant isolation."""
+    """Submits a candidate resume for asynchronous screening with PostgreSQL persistence, company skills audit, and tenant isolation."""
     # 1. Validate file extension
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -146,14 +161,33 @@ async def screen_resume_endpoint(
         raise HTTPException(status_code=400, detail="Invalid PDF file: Missing %PDF- magic signature.")
 
     task_id = str(uuid.uuid4())
-    
     tasks_db[task_id] = {
         "task_id": task_id,
         "status": "queued",
         "created_at": time.time()
     }
 
-    # Run processing within authenticated tenant organization
+    parsed_skills = [s.strip() for s in required_skills.split(",") if s.strip()] if required_skills else None
+
+    # If Job Description paragraph is provided, extract requirements
+    if job_description and job_description.strip():
+        from src.services.jd_service import parse_job_description
+        parsed_jd = parse_job_description(job_description.strip())
+        if not target_role and parsed_jd.title:
+            target_role = parsed_jd.title
+        if min_experience is None and parsed_jd.experience_min_years:
+            min_experience = parsed_jd.experience_min_years
+
+        extracted_skills = parsed_jd.required_skills or []
+        if parsed_skills:
+            existing_lower = {s.lower() for s in parsed_skills}
+            for s in extracted_skills:
+                if s.lower() not in existing_lower:
+                    parsed_skills.append(s)
+        else:
+            parsed_skills = extracted_skills
+
+    # Dispatch to background task worker
     background_tasks.add_task(
         _process_screening_task,
         task_id=task_id,
@@ -162,7 +196,12 @@ async def screen_resume_endpoint(
         filename=file.filename,
         github_user_override=github_username,
         webhook_url=webhook_url,
-        actor_id=tenant.user_id
+        actor_id=tenant.user_id,
+        target_role=target_role,
+        required_skills=parsed_skills,
+        min_experience=min_experience,
+        linkedin_url=linkedin_url,
+        job_description=job_description.strip() if job_description else None
     )
 
     return {
@@ -203,6 +242,8 @@ async def list_recent_screenings(
     if rows:
         results = []
         for a, c in rows:
+            is_valid = bool(a.overall_score > 0 and not ("non-resume" in c.name.lower() or "invalid" in (a.executive_summary or "").lower()))
+            doc_type = "RESUME" if is_valid else "ACADEMIC_LAB_OR_EXERCISE"
             results.append({
                 "id": str(a.id),
                 "audit_id": str(a.id),
@@ -217,6 +258,8 @@ async def list_recent_screenings(
                 "consistency_score": a.consistency_score,
                 "confidence_level": a.confidence_level,
                 "executive_summary": a.executive_summary,
+                "is_valid_resume": is_valid,
+                "document_type": doc_type,
                 "screened_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S")
             })
         return results

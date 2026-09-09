@@ -149,6 +149,56 @@
               </div>
             </div>
 
+            <!-- Company Role, Job Description & Required Skills -->
+            <div class="form-group">
+              <label for="target-role">Target Job Role <span class="dim">(Optional)</span></label>
+              <input type="text" id="target-role" placeholder="e.g. Senior Backend Engineer" autocomplete="off">
+            </div>
+
+            <!-- Job Description Paragraph (Supports Full LinkedIn Posts) -->
+            <div class="form-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+                <label for="job-description" style="margin-bottom: 0;">Job Description / LinkedIn Posting <span class="dim">(Paste Text)</span></label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button type="button" class="btn-text-sm" id="btn-paste-linkedin-jd" style="font-size: 0.75rem; color: var(--color-primary); background: none; border: none; cursor: pointer; text-decoration: underline; font-weight: 600;">
+                    💼 Paste Full LinkedIn Job
+                  </button>
+                  <button type="button" class="btn-text-sm" id="btn-paste-sample-jd" style="font-size: 0.75rem; color: var(--color-text-muted); background: none; border: none; cursor: pointer; text-decoration: underline;">
+                    Short JD
+                  </button>
+                  <button type="button" class="btn-text-sm" id="btn-clear-jd" style="font-size: 0.75rem; color: var(--color-danger); background: none; border: none; cursor: pointer; text-decoration: underline;">
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <textarea id="job-description" rows="5" placeholder="Paste full LinkedIn job description here (e.g. About Us, Role Overview, Requirements, Must-have tech stack, Basic Qualifications, Nice-to-have)..." style="width: 100%; border-radius: 8px; padding: 10px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font-family: inherit; font-size: 0.85rem; resize: vertical; line-height: 1.5;"></textarea>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                <p class="hint-text" style="margin: 0; font-size: 0.75rem; color: var(--color-text-muted);">
+                  💡 <strong>Auto-Extraction:</strong> Automatically extracts role title, required skills, and min experience from long LinkedIn posts!
+                </p>
+                <span id="jd-word-count" style="font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap;">0 words</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="required-skills">Company Required Skills <span class="dim">(Comma-separated, or auto-extracted from JD)</span></label>
+              <input type="text" id="required-skills" placeholder="e.g. Python, FastAPI, Docker, PostgreSQL" autocomplete="off">
+              <div class="chip-row">
+                <span class="chip-label">Quick Presets:</span>
+                <button type="button" class="chip" id="preset-backend">Backend (Python, FastAPI, Docker)</button>
+                <button type="button" class="chip" id="preset-fullstack">Full-Stack (React, TypeScript, Node)</button>
+              </div>
+            </div>
+
+            <!-- LinkedIn Profile for Experience Verification -->
+            <div class="form-group">
+              <label for="linkedin-url">LinkedIn Profile Handle/URL <span class="dim">(Optional)</span></label>
+              <div class="input-wrapper">
+                <span class="input-prefix">linkedin.com/in/</span>
+                <input type="text" id="linkedin-url" placeholder="e.g. aarav-sharma" autocomplete="off">
+              </div>
+            </div>
+
             <!-- Webhook URL (Optional Enterprise) -->
             <div class="form-group">
               <label for="webhook-url">ATS Webhook URL <span class="dim">(Optional)</span></label>
@@ -158,7 +208,7 @@
             <!-- Submit Button -->
             <button type="submit" class="btn-primary" id="btn-submit">
               <span class="btn-icon">🚀</span>
-              <span class="btn-text">Audit Candidate Code</span>
+              <span class="btn-text">Audit Candidate Code & Skills</span>
             </button>
           </form>
         </section>
@@ -169,10 +219,11 @@
           <div class="placeholder-card" id="state-placeholder">
             <div class="placeholder-icon">🎯</div>
             <h3>Ready for Candidate Audit</h3>
-            <p>Upload a resume PDF and supply a GitHub handle to cross-examine technical claims against verified source code.</p>
+            <p>Upload a resume PDF and specify company skills to cross-examine claims against verified source code and profiles.</p>
             <div class="feature-pills">
               <span>⚡ Sub-second caching</span>
               <span>🤖 Multi-model consensus</span>
+              <span>🎯 Company skills gap analysis</span>
               <span>🚩 Automated red-flag detection</span>
             </div>
           </div>
@@ -190,17 +241,103 @@
             </div>
           </div>
 
+          <!-- Dedicated Invalid Document State -->
+          <div class="result-card invalid-document-card" id="state-invalid-document" style="display: none; border: 2px solid #ef4444; background: var(--color-surface); box-shadow: 0 8px 30px rgba(239, 68, 68, 0.12); border-radius: 16px; padding: 24px;">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid rgba(239, 68, 68, 0.2);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: #fee2e2; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #dc2626;">
+                  ❌
+                </div>
+                <div>
+                  <h2 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #dc2626; display: flex; align-items: center; gap: 8px;">
+                    INVALID DOCUMENT DETECTED
+                  </h2>
+                  <p style="margin: 3px 0 0 0; font-size: 0.85rem; color: var(--color-text-muted);">
+                    Document verification failed upfront safety checks. Screening halted.
+                  </p>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge" id="invalid-doc-type-badge" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 6px 12px; border-radius: 20px; font-weight: 700; font-size: 0.78rem; text-transform: uppercase;">
+                  ACADEMIC_LAB_OR_EXERCISE
+                </span>
+                <span class="rec-badge reject" style="font-size: 0.82rem; padding: 6px 14px;">REJECTED</span>
+              </div>
+            </div>
+
+            <!-- Score & Quick Verdict Banner -->
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; margin: 20px 0; padding: 18px; background: rgba(239, 68, 68, 0.04); border-radius: 12px; border-left: 4px solid #ef4444;">
+              <div class="score-dial-wrap" style="text-align: center;">
+                <div class="score-circle" style="width: 90px; height: 90px; border-color: #ef4444; background: #fee2e2; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; border-width: 4px; border-style: solid; margin: 0 auto;">
+                  <span class="score-number" style="font-size: 2rem; font-weight: 800; color: #dc2626;">0</span>
+                  <span class="score-denom" style="font-size: 0.75rem; color: #991b1b;">/ 100</span>
+                </div>
+                <span class="dial-caption" style="display: block; margin-top: 6px; font-size: 0.75rem; font-weight: 600; color: #991b1b;">Final Score</span>
+              </div>
+              <div>
+                <h3 style="margin: 0 0 6px 0; font-size: 1.05rem; font-weight: 700; color: var(--color-text);">
+                  This uploaded file is NOT a professional resume or CV.
+                </h3>
+                <p style="margin: 0; font-size: 0.88rem; line-height: 1.5; color: var(--color-text-muted);" id="invalid-doc-main-desc">
+                  The anti-fraud document validator detected academic coursework, lab manual instructions, or exercise sheets instead of career history. Zero candidate technical claims were evaluated.
+                </p>
+              </div>
+            </div>
+
+            <!-- Reasons & Flags Section -->
+            <div style="margin: 20px 0;">
+              <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); display: flex; align-items: center; gap: 6px;">
+                <span>🚩</span> Why this document was rejected:
+              </h4>
+              <ul class="flag-list red-flags" id="invalid-doc-reasons-list" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+                <li style="padding: 10px 14px; background: rgba(239, 68, 68, 0.08); border-radius: 8px; border-left: 3px solid #ef4444; font-size: 0.85rem; color: var(--color-text);">
+                  Matches academic lab/exercise markers.
+                </li>
+              </ul>
+            </div>
+
+            <!-- Safety Pipeline Execution Proof -->
+            <div style="margin: 20px 0; padding: 14px; background: var(--color-surface-hover); border-radius: 10px; border: 1px solid var(--color-border); font-size: 0.82rem;">
+              <div style="font-weight: 700; color: var(--color-text); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <span>🛡️</span> Security & Validation Enforcement:
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; color: var(--color-text-muted);">
+                <div>✓ GitHub Code Audit: <strong style="color: var(--color-text);">Halted (Skipped)</strong></div>
+                <div>✓ LLM Consensus Scoring: <strong style="color: var(--color-text);">Halted (Skipped)</strong></div>
+                <div>✓ Interview Invitation: <strong style="color: #dc2626;">Blocked (Not Generated)</strong></div>
+                <div>✓ Pipeline Stage: <strong style="color: #dc2626;">Auto-Rejected</strong></div>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+              <button type="button" class="btn-primary" id="btn-invalid-upload-resume" style="padding: 10px 20px; font-weight: 700;">
+                <span>📤</span> Upload Candidate Resume
+              </button>
+              <button type="button" class="btn-secondary" id="btn-invalid-view-reply" style="padding: 10px 18px; display: inline-flex; align-items: center; gap: 6px;">
+                <span>✉️</span> View Resubmission Request Notice
+              </button>
+              <button type="button" class="btn-secondary" id="btn-invalid-reset-all" style="padding: 10px 16px;">
+                Reset Screener
+              </button>
+            </div>
+          </div>
+
           <!-- Result Scorecard View -->
           <div class="result-card" id="state-result" style="display: none;">
             <!-- Candidate Banner -->
             <div class="result-header">
               <div>
-                <div class="candidate-row">
+                <div class="candidate-row" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   <h2 id="res-candidate-name">Aarav Sharma</h2>
+                  <span class="badge" id="res-target-role" style="display: none; background: rgba(59, 130, 246, 0.15); color: var(--color-primary); padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 0.8rem;">Role</span>
                   <span class="rec-badge" id="res-rec-badge">SHORTLIST</span>
                 </div>
                 <div class="meta-row">
                   <span id="res-github-link">@github_user</span>
+                  <span class="dot-sep" id="res-linkedin-sep" style="display: none;">•</span>
+                  <span id="res-linkedin-link" style="display: none; align-items: center; gap: 4px;">💼 <a href="#" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;" id="res-linkedin-anchor">LinkedIn Profile</a></span>
                   <span class="dot-sep">•</span>
                   <span id="res-experience">3.0 yrs experience</span>
                   <span class="dot-sep">•</span>
@@ -227,11 +364,11 @@
             <div class="metrics-triad">
               <div class="triad-card">
                 <div class="triad-head">
-                  <span>Skills Match</span>
+                  <span id="res-skills-label">Skills Match</span>
                   <span class="triad-val" id="res-skills-score">80%</span>
                 </div>
                 <div class="triad-bar"><div class="triad-fill" id="res-skills-bar"></div></div>
-                <span class="triad-sub">40% weight</span>
+                <span class="triad-sub" id="res-skills-sub">40% weight</span>
               </div>
               <div class="triad-card">
                 <div class="triad-head">
@@ -248,6 +385,35 @@
                 </div>
                 <div class="triad-bar"><div class="triad-fill" id="res-consistency-bar"></div></div>
                 <span class="triad-sub">30% weight</span>
+              </div>
+            </div>
+
+            <!-- Company Required Skills Gap Analysis Card -->
+            <div class="card company-skills-card" id="company-skills-section" style="display: none; margin-top: 16px; padding: 18px; border-radius: 12px; background: var(--color-surface); border: 1px solid var(--color-border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                  <span>🎯</span> Company Required Skills Gap Analysis
+                </h4>
+                <span class="badge" id="res-company-match-badge" style="padding: 4px 10px; border-radius: 12px; font-weight: 700; font-size: 0.8rem; background: var(--color-info-bg); color: var(--color-primary);">
+                  Match: 100%
+                </span>
+              </div>
+              <div id="res-jd-preview-container" style="display: none; margin-bottom: 14px; padding: 12px 14px; border-radius: 8px; background: var(--color-surface-hover); border-left: 3px solid var(--color-primary); font-size: 0.82rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                  <strong style="color: var(--color-text); display: flex; align-items: center; gap: 6px;">
+                    <span>💼</span> Audited against Job Posting
+                  </strong>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="res-jd-role-tag" style="font-size: 0.75rem; background: var(--color-border); padding: 2px 8px; border-radius: 4px; font-weight: 600;">Role</span>
+                    <button type="button" id="btn-toggle-full-jd" style="background: none; border: none; font-size: 0.75rem; color: var(--color-primary); cursor: pointer; text-decoration: underline;">
+                      Show More ▾
+                    </button>
+                  </div>
+                </div>
+                <div id="res-jd-preview-text" style="color: var(--color-text-muted); font-size: 0.8rem; line-height: 1.45; max-height: 70px; overflow: hidden; white-space: pre-wrap; transition: max-height 0.25s ease;"></div>
+              </div>
+              <div class="skills-gap-grid" id="res-skills-gap-grid" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Populated by JS -->
               </div>
             </div>
 
@@ -292,6 +458,27 @@
                 <div class="model-votes-box" id="res-model-votes">
                   <!-- Injected via JS -->
                 </div>
+              </div>
+            </div>
+
+            <!-- Topic-Focused Technical Interview Guide Card -->
+            <div class="card topic-questions-card" id="topic-questions-section" style="display: none; margin-top: 20px; padding: 20px; border-radius: 12px; background: var(--color-surface); border: 1px solid var(--color-border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <h4 style="margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+                    <span>🎙️</span> Topic-Focused Technical Interview Questions
+                  </h4>
+                  <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--color-text-muted);">
+                    Targeted interview questions dynamically generated to probe candidate unverified skills and red-flag discrepancies.
+                  </p>
+                </div>
+                <button type="button" class="btn-secondary-sm" id="btn-copy-interview-guide" style="font-size: 0.75rem; padding: 6px 12px;">
+                  📋 Copy Interview Guide
+                </button>
+              </div>
+
+              <div class="topic-questions-grid" id="res-topic-questions-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- Populated dynamically by JS -->
               </div>
             </div>
 

@@ -23,6 +23,8 @@ class BatchCandidateResult(BaseModel):
     code_quality_score: int
     consistency_score: int
     years_experience: Optional[float] = None
+    is_valid_resume: bool = True
+    document_type: str = "RESUME"
     red_flags: List[str] = Field(default_factory=list)
     green_flags: List[str] = Field(default_factory=list)
     executive_summary: str
@@ -72,6 +74,46 @@ async def _audit_single_candidate(
             if candidate_name and candidate_name != "Candidate Application":
                 claims.name = candidate_name
 
+            # 🚨 EARLY TERMINATION: Halt invalid documents immediately
+            if not getattr(claims, "is_valid_resume", True):
+                elapsed = round(time.time() - start_time, 2)
+                from .email_connector import DraftResponseGenerator
+                draft = DraftResponseGenerator.create_draft(
+                    candidate_name=claims.name,
+                    recipient_email=claims.email or f"{claims.name.lower().replace(' ', '.')}@example.com",
+                    verdict="REJECT",
+                    score=0
+                )
+                red_flags = [
+                    "CRITICAL: Uploaded document is NOT a valid professional resume/CV.",
+                    f"Document classified as: {getattr(claims, 'document_type', 'ACADEMIC_LAB_OR_EXERCISE')}."
+                ] + getattr(claims, "validation_flags", [])
+
+                result = BatchCandidateResult(
+                    candidate_name=claims.name,
+                    github_username="none",
+                    linkedin_url=linkedin_url,
+                    overall_score=0,
+                    recommendation="REJECT",
+                    skills_match_score=0,
+                    code_quality_score=0,
+                    consistency_score=0,
+                    years_experience=0.0,
+                    is_valid_resume=False,
+                    document_type=getattr(claims, "document_type", "ACADEMIC_LAB_OR_EXERCISE"),
+                    red_flags=red_flags,
+                    green_flags=[],
+                    executive_summary=(
+                        f"Screening HALTED: Uploaded document for '{claims.name}' does not appear to be a professional resume/CV "
+                        f"(detected: {getattr(claims, 'document_type', 'ACADEMIC_LAB_OR_EXERCISE')}). Score: 0/100 REJECT."
+                    ),
+                    latency_seconds=elapsed,
+                    cached=False,
+                    email_draft=draft.model_dump()
+                )
+                smart_cache.set("batch_candidate", cache_key, result.model_dump())
+                return result
+
             target_github = github_override or claims.github_username or "none"
 
             # 2. GitHub Evidence (with cache)
@@ -85,6 +127,17 @@ async def _audit_single_candidate(
             # 3. Consensus Evaluation
             consensus = run_consensus_evaluation(claims, evidence)
             card = consensus.scorecard
+
+            # 🚨 FINAL REINFORCED GATE: Ensure invalid documents ALWAYS score 0 and REJECT
+            if not getattr(claims, "is_valid_resume", True):
+                card.overall_score = 0
+                card.skills_match_score = 0
+                card.code_quality_score = 0
+                card.consistency_score = 0
+                card.recommendation = "REJECT"
+                if not any("NOT a valid" in f for f in card.red_flags):
+                    card.red_flags.insert(0, "CRITICAL: Uploaded document is NOT a valid professional resume/CV.")
+
             elapsed = round(time.time() - start_time, 2)
 
             from .email_connector import DraftResponseGenerator
@@ -105,6 +158,8 @@ async def _audit_single_candidate(
                 code_quality_score=card.code_quality_score,
                 consistency_score=card.consistency_score,
                 years_experience=claims.years_experience,
+                is_valid_resume=getattr(claims, "is_valid_resume", True),
+                document_type=getattr(claims, "document_type", "RESUME"),
                 red_flags=card.red_flags,
                 green_flags=card.green_flags,
                 executive_summary=card.executive_summary,

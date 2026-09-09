@@ -37,42 +37,103 @@ class JobMatchResult(BaseModel):
     job_fit_recommendation: str = Field(..., description="STRONG_MATCH | POTENTIAL_MATCH | POOR_MATCH")
     summary: str
 
-def _heuristic_jd_parser(jd_text: str) -> StructuredJobDescription:
-    """Heuristic fallback parser using regex extraction when LLM is unavailable."""
-    lines = [l.strip() for l in jd_text.splitlines() if l.strip()]
-    title = lines[0] if lines else "Software Engineer"
-    if len(title.split()) > 6:
-        title = "Senior Software Engineer"
+def _clean_title(t: str) -> str:
+    t = re.sub(r"^(?:as\s+an?|as|for\s+an?|for|an?)\s+", "", t.strip(), flags=re.IGNORECASE)
+    t = re.sub(r"^(?:an?|the)\s+", "", t.strip(), flags=re.IGNORECASE)
+    return t.strip(" -:,.|")
 
-    # Common tech catalog
+def _extract_title_from_jd(jd_text: str) -> str:
+    """Intelligently detects role title from full LinkedIn job postings."""
+    # Pattern 1: Explicit Role / Job Title header
+    m = re.search(r"(?:job\s+title|role|position|title)\s*[:\-]\s*([A-Za-z0-9\s\-/&]+)", jd_text, re.IGNORECASE)
+    if m:
+        t = _clean_title(m.group(1).strip().splitlines()[0])
+        if 3 <= len(t) <= 50:
+            return t
+
+    # Pattern 2: "Looking for / hiring a [Title]"
+    m = re.search(r"(?:hiring|looking for|seeking)\s+(?:a|an)\s+([A-Za-z0-9\s\-/]+?\s+(?:Engineer|Developer|Architect|Lead|Manager|Specialist))", jd_text, re.IGNORECASE)
+    if m:
+        t = _clean_title(m.group(1))
+        if 5 <= len(t) <= 50:
+            return t
+
+    # Pattern 3: Search for common standard industry role titles
+    role_pattern = r"\b((?:Senior|Lead|Staff|Principal|Junior|Mid-Level)?\s*(?:Software|Backend|Frontend|Full[- ]?Stack|DevOps|Cloud|Data|Machine Learning|AI|Platform|Site Reliability|Systems)\s+(?:Engineer|Developer|Architect|Lead))\b"
+    m = re.search(role_pattern, jd_text, re.IGNORECASE)
+    if m:
+        return _clean_title(m.group(1))
+
+    # Pattern 4: First short non-empty line if it doesn't look like company intro
+    for line in jd_text.splitlines():
+        line_clean = line.strip()
+        if line_clean and not line_clean.lower().startswith(("about", "who we are", "welcome", "company", "description")):
+            if 4 <= len(line_clean) <= 45 and not line_clean.endswith("."):
+                return _clean_title(line_clean)
+            break
+
+    return "Senior Full-Stack Engineer"
+
+def _heuristic_jd_parser(jd_text: str) -> StructuredJobDescription:
+    """Heuristic fallback parser supporting large LinkedIn multi-paragraph postings."""
+    title = _extract_title_from_jd(jd_text)
+
+    # Comprehensive modern tech catalog for LinkedIn job descriptions
     techs = [
         "Python", "JavaScript", "TypeScript", "React", "Node.js", "Go", "Golang",
-        "Java", "PostgreSQL", "Docker", "Kubernetes", "AWS", "GCP", "Redis",
-        "FastAPI", "Django", "GraphQL", "Rust", "Vue", "Next.js", "C++"
+        "Java", "PostgreSQL", "Docker", "Kubernetes", "AWS", "GCP", "Azure", "Redis",
+        "FastAPI", "Django", "Flask", "GraphQL", "REST", "Rust", "Vue", "Angular",
+        "Next.js", "C++", "C#", ".NET", "Kafka", "RabbitMQ", "MongoDB", "MySQL",
+        "Elasticsearch", "Terraform", "CI/CD", "Linux", "Git", "Microservices",
+        "SQL", "NoSQL", "PyTorch", "TensorFlow", "Pandas", "Spark", "Airflow"
     ]
-    found = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", jd_text, re.IGNORECASE)]
-    
-    # Split found skills into required and preferred
-    required = found[:5] if found else ["Python", "Docker", "PostgreSQL"]
-    preferred = found[5:8] if len(found) > 5 else ["Kubernetes", "Redis"]
 
-    # Experience heuristic
-    exp_match = re.search(r"(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s+experience", jd_text, re.IGNORECASE)
+    # Detect sections if present (e.g. Requirements vs Preferred)
+    req_section_match = re.search(
+        r"(?:requirements|basic qualifications|must have|what you(?:'ll)? need|qualifications)(.*?)(?:preferred|nice to have|bonus|responsibilities|benefits|\Z)",
+        jd_text,
+        re.IGNORECASE | re.DOTALL
+    )
+    pref_section_match = re.search(
+        r"(?:preferred qualifications|nice to have|bonus points|preferred|plus)(.*?)(?:benefits|what we offer|about us|\Z)",
+        jd_text,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    req_text = req_section_match.group(1) if req_section_match else jd_text
+    pref_text = pref_section_match.group(1) if pref_section_match else ""
+
+    found_in_req = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", req_text, re.IGNORECASE)]
+    found_in_pref = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", pref_text, re.IGNORECASE)]
+    all_found = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", jd_text, re.IGNORECASE)]
+
+    if found_in_req:
+        required = found_in_req[:7]
+        # Preferred skills are either from preferred section or remaining found skills
+        preferred = [t for t in (found_in_pref + all_found) if t not in required][:5]
+    else:
+        required = all_found[:5] if all_found else ["Python", "Docker", "PostgreSQL"]
+        preferred = all_found[5:9] if len(all_found) > 5 else ["Kubernetes", "Redis"]
+
+    # Experience heuristic: handle multiple variations (e.g. "4+ years", "minimum 3 years", "3-5 years")
+    exp_match = re.search(r"(?:minimum\s+(?:of\s+)?)?(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?(?:\s+(?:professional|relevant|hands-on))?\s+experience", jd_text, re.IGNORECASE)
+    if not exp_match:
+        exp_match = re.search(r"(\d+)\s*-\s*\d+\s*(?:years?|yrs?)", jd_text, re.IGNORECASE)
     years = float(exp_match.group(1)) if exp_match else 3.0
 
     return StructuredJobDescription(
         title=title,
         department="Engineering",
-        location="Remote",
+        location="Remote / Hybrid",
         work_model="remote",
         seniority="Senior" if years >= 4 else "Mid",
         experience_min_years=years,
         required_skills=required,
         preferred_skills=preferred,
         responsibilities=[
-            "Architect, build, and maintain scalable backend services and APIs.",
-            "Collaborate with cross-functional teams to deliver production systems.",
-            "Ensure high code quality through automated testing and code reviews."
+            "Architect, build, and maintain scalable software services and APIs.",
+            "Collaborate with cross-functional product and engineering teams.",
+            "Ensure high software engineering standards with automated tests and CI/CD."
         ],
         salary_range="Competitive"
     )

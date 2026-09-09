@@ -1,4 +1,5 @@
 import os
+import re
 import imaplib
 import email
 from email import policy
@@ -40,9 +41,23 @@ class DraftResponseGenerator:
         calendly_link: str = "https://calendly.com/techcorp-hiring/30min",
         score: int = 85
     ) -> CandidateEmailDraft:
-        first_name = candidate_name.split()[0] if candidate_name else "Candidate"
+        # Sanitize first name and guard against markdown, symbols, or invalid document names
+        clean_name = re.sub(r"^[#\s\*\-_>]+", "", candidate_name or "").strip()
+        words = [w for w in clean_name.split() if re.match(r"^[A-Za-z\.\'-]+$", w)]
+        first_name = words[0] if words and words[0].lower() not in ("non-resume", "invalid", "document", "candidate", "applicant") else "Candidate"
 
-        if verdict == "SHORTLIST":
+        if score == 0 or "non-resume" in (candidate_name or "").lower() or "invalid" in (candidate_name or "").lower():
+            subject = f"Action Required: Resume Submission for {role_title} at {company_name}"
+            body = (
+                f"Dear Applicant,\n\n"
+                f"Thank you for your interest in the {role_title} position at {company_name}.\n\n"
+                f"Our automated screening system was unable to review your application because the submitted file does not appear to be a standard resume or CV (detected coursework, assignment sheet, or unformatted text).\n\n"
+                f"Please reply to this email with your updated resume PDF containing your work experience, education, and technical projects so our team can evaluate your application.\n\n"
+                f"Warm regards,\n"
+                f"The Talent Acquisition Team\n"
+                f"{company_name}"
+            )
+        elif verdict == "SHORTLIST":
             subject = f"Interview Invitation: {role_title} at {company_name}"
             body = (
                 f"Hi {first_name},\n\n"
@@ -61,7 +76,7 @@ class DraftResponseGenerator:
             body = (
                 f"Dear {first_name},\n\n"
                 f"Thank you for your interest in the {role_title} role at {company_name} and for taking the time to share your background with us.\n\n"
-                f"While we were impressed by your passion, we have decided to move forward with other candidates whose current technical experience more closely matches the specific needs for this opening.\n\n"
+                f"While we appreciate your application, we have decided to move forward with other candidates whose current technical experience more closely matches the specific requirements for this opening.\n\n"
                 f"We truly appreciate your time and wish you the very best in your job search and ongoing career.\n\n"
                 f"Warm regards,\n"
                 f"The Talent Team\n"

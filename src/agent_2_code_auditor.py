@@ -75,15 +75,22 @@ def _generate_mock_github_evidence(username: str) -> GitHubEvidence:
 
 def audit_github(username: str) -> GitHubEvidence:
     """Agent 2: Queries public GitHub API to extract code evidence, activity, and metrics."""
-    if not username:
+    clean_user = (username or "").strip().rstrip("/").split("/")[-1].replace("@", "")
+    if not clean_user or clean_user.lower() in ("none", "null", "undefined", "unknown", "n/a", ""):
         return GitHubEvidence(
             username="none",
             profile_found=False,
+            total_public_repos=0,
+            original_repos_count=0,
+            forked_repos_count=0,
+            total_stars=0,
+            languages_detected={},
+            documentation_ratio=0.0,
+            recent_activity_count=0,
             audit_notes=["No GitHub username provided or found in resume."]
         )
 
-    # Clean username if URL passed
-    username = username.rstrip("/").split("/")[-1].replace("@", "")
+    username = clean_user
 
     github_token = os.getenv("GITHUB_TOKEN", "")
     use_mock = os.getenv("USE_MOCK_FALLBACK", "true").lower() == "true"
@@ -101,7 +108,7 @@ def audit_github(username: str) -> GitHubEvidence:
         
         # Check rate limits
         if user_res.status_code == 403 and "rate limit" in user_res.text.lower():
-            if use_mock:
+            if use_mock and username.lower() in ("test", "demo", "sample", "tiangolo"):
                 mock = _generate_mock_github_evidence(username)
                 mock.api_rate_limited = True
                 mock.audit_notes.append("GitHub API rate limit reached; loaded demo evidence.")
@@ -110,17 +117,27 @@ def audit_github(username: str) -> GitHubEvidence:
                 username=username,
                 profile_found=False,
                 api_rate_limited=True,
-                audit_notes=["GitHub API rate limit exceeded. Set GITHUB_TOKEN in .env to expand limit."]
+                total_public_repos=0,
+                original_repos_count=0,
+                forked_repos_count=0,
+                total_stars=0,
+                languages_detected={},
+                documentation_ratio=0.0,
+                recent_activity_count=0,
+                audit_notes=["GitHub API rate limit exceeded. Verification unavailable."]
             )
 
         if user_res.status_code == 404:
-            if use_mock:
-                mock = _generate_mock_github_evidence(username)
-                mock.audit_notes.append(f"GitHub user '{username}' not found; populated demo data for evaluation.")
-                return mock
             return GitHubEvidence(
                 username=username,
                 profile_found=False,
+                total_public_repos=0,
+                original_repos_count=0,
+                forked_repos_count=0,
+                total_stars=0,
+                languages_detected={},
+                documentation_ratio=0.0,
+                recent_activity_count=0,
                 audit_notes=[f"GitHub user '{username}' was not found on GitHub."]
             )
 

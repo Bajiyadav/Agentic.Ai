@@ -88,10 +88,16 @@ python run_server.py
 
 ### 5. Run via CLI
 ```bash
-# Screen a candidate resume PDF
+# Screen a candidate resume PDF (general audit)
 python main.py --resume sample_resume.pdf
 
-# Screen against a specific GitHub username
+# Screen against company required skills & target role
+python main.py --resume sample_resume.pdf --skills "Python, FastAPI, Docker, PostgreSQL" --role "Senior Backend Engineer" --min-exp 3.0
+
+# Screen against a Job Description file (.txt or .md)
+python main.py --resume sample_resume.pdf --jd path/to/job_description.txt
+
+# Screen against a specific GitHub username override
 python main.py --resume sample_resume.pdf --github octocat
 ```
 

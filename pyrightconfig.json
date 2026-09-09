@@ -1,0 +1,8 @@
+{
+  "venvPath": "/Users/bajiyadav/Agentic.Ai",
+  "venv": ".venv",
+  "extraPaths": [
+    "/Users/bajiyadav/Agentic.Ai/.venv/lib/python3.13/site-packages",
+    "/Users/bajiyadav/Agentic.Ai"
+  ]
+}
