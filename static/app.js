@@ -401,10 +401,10 @@ function renderScorecard(result) {
   const speedBadge = document.getElementById('res-speed-badge');
   if (result.cached) {
     speedBadge.textContent = `⚡ ${result.latency_seconds}s (SmartCache Hit)`;
-    speedBadge.style.color = '#10b981';
+    speedBadge.style.color = 'var(--color-success)';
   } else {
     speedBadge.textContent = `⚡ ${result.latency_seconds}s (Consensus Pipeline)`;
-    speedBadge.style.color = '#a5b4fc';
+    speedBadge.style.color = 'var(--color-primary)';
   }
 
   const recBadge = document.getElementById('res-rec-badge');
@@ -415,17 +415,14 @@ function renderScorecard(result) {
   const scoreCircle = document.getElementById('score-circle');
   document.getElementById('res-overall-score').textContent = overall;
 
-  let color = 'var(--green)';
-  let glow = 'var(--green-glow)';
+  let color = 'var(--color-success)';
   if (overall < 55) {
-    color = 'var(--red)';
-    glow = 'var(--red-glow)';
+    color = 'var(--color-danger)';
   } else if (overall < 78) {
-    color = 'var(--yellow)';
-    glow = 'var(--yellow-glow)';
+    color = 'var(--color-warning)';
   }
   scoreCircle.style.borderColor = color;
-  scoreCircle.style.boxShadow = `0 0 24px ${glow}`;
+  scoreCircle.style.boxShadow = '0 2px 8px rgba(15, 23, 42, 0.08)';
   document.getElementById('res-overall-score').style.color = color;
 
   document.getElementById('res-executive-summary').textContent = result.executive_summary;
@@ -493,18 +490,18 @@ function renderScorecard(result) {
   if (recruiterBadge) {
     if (result.recruiter_decision) {
       recruiterBadge.textContent = `OVERRIDDEN: ${result.recruiter_decision}`;
-      recruiterBadge.style.background = 'rgba(168,85,247,0.25)';
-      recruiterBadge.style.color = '#c084fc';
-      recruiterBadge.style.borderColor = 'rgba(168,85,247,0.5)';
+      recruiterBadge.style.background = 'var(--color-indigo-bg)';
+      recruiterBadge.style.color = 'var(--color-indigo)';
+      recruiterBadge.style.borderColor = 'var(--color-border)';
       if (overrideNotice) {
         overrideNotice.textContent = `✓ Recruiter Override Active: ${result.recruiter_decision} — "${result.recruiter_decision_reason || 'Verified'}"`;
         overrideNotice.style.display = 'block';
       }
     } else {
       recruiterBadge.textContent = `AI VERDICT: ${result.recommendation}`;
-      recruiterBadge.style.background = 'rgba(59,130,246,0.2)';
-      recruiterBadge.style.color = '#60a5fa';
-      recruiterBadge.style.borderColor = 'rgba(59,130,246,0.4)';
+      recruiterBadge.style.background = 'var(--color-info-bg)';
+      recruiterBadge.style.color = 'var(--color-primary)';
+      recruiterBadge.style.borderColor = 'var(--color-info-border)';
     }
   }
 
@@ -519,14 +516,17 @@ function renderScorecard(result) {
       if (replyBadge) {
         replyBadge.textContent = (result.draft_reply.status || 'DRAFT').toUpperCase();
         if (result.draft_reply.status === 'sent') {
-          replyBadge.style.background = 'rgba(16,185,129,0.25)';
-          replyBadge.style.color = '#34d399';
+          replyBadge.style.background = 'var(--color-success-bg)';
+          replyBadge.style.color = 'var(--color-success)';
+          replyBadge.style.borderColor = 'var(--color-success-border)';
         } else if (result.draft_reply.status === 'approved') {
-          replyBadge.style.background = 'rgba(59,130,246,0.25)';
-          replyBadge.style.color = '#60a5fa';
+          replyBadge.style.background = 'var(--color-info-bg)';
+          replyBadge.style.color = 'var(--color-primary)';
+          replyBadge.style.borderColor = 'var(--color-info-border)';
         } else {
-          replyBadge.style.background = 'rgba(234,179,8,0.2)';
-          replyBadge.style.color = '#facc15';
+          replyBadge.style.background = 'var(--color-warning-bg)';
+          replyBadge.style.color = 'var(--color-warning)';
+          replyBadge.style.borderColor = 'var(--color-warning-border)';
         }
       }
       replySection.style.display = 'block';
@@ -612,8 +612,9 @@ function initRecruiterActions() {
         if (inputBox) inputBox.style.display = 'none';
         if (recruiterBadge) {
           recruiterBadge.textContent = `OVERRIDDEN: ${data.recruiter_decision}`;
-          recruiterBadge.style.background = 'rgba(168,85,247,0.25)';
-          recruiterBadge.style.color = '#c084fc';
+          recruiterBadge.style.background = 'var(--color-indigo-bg)';
+          recruiterBadge.style.color = 'var(--color-indigo)';
+          recruiterBadge.style.borderColor = 'var(--color-border)';
         }
         if (noticeEl) {
           noticeEl.textContent = `✓ Recruiter Override Saved: Logged verdict changed to ${data.recruiter_decision} ("${reason}")`;
@@ -653,8 +654,9 @@ function initRecruiterActions() {
         if (res.ok) {
           if (replyBadge) {
             replyBadge.textContent = 'APPROVED';
-            replyBadge.style.background = 'rgba(59,130,246,0.25)';
-            replyBadge.style.color = '#60a5fa';
+            replyBadge.style.background = 'var(--color-info-bg)';
+            replyBadge.style.color = 'var(--color-primary)';
+            replyBadge.style.borderColor = 'var(--color-info-border)';
           }
           if (replyStatusText) {
             replyStatusText.textContent = '✓ Draft approved by recruiter and queued for dispatch.';
@@ -688,8 +690,9 @@ function initRecruiterActions() {
         if (res.ok) {
           if (replyBadge) {
             replyBadge.textContent = 'SENT';
-            replyBadge.style.background = 'rgba(16,185,129,0.25)';
-            replyBadge.style.color = '#34d399';
+            replyBadge.style.background = 'var(--color-success-bg)';
+            replyBadge.style.color = 'var(--color-success)';
+            replyBadge.style.borderColor = 'var(--color-success-border)';
           }
           if (replyStatusText) {
             replyStatusText.textContent = '🚀 Email transmitted successfully!';

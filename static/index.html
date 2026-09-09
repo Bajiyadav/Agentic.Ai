@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=20260909_allbuttonsworking">
+  <link rel="stylesheet" href="/static/style.css?v=20260909_color_redesign">
 </head>
 <body data-theme="light">
   <!-- Ambient Lighting Effects -->
@@ -92,7 +92,7 @@
           <button type="button" class="btn-theme-toggle" id="btn-theme-toggle" aria-label="Toggle Dark / White Mode" title="Toggle Theme (Dark / White)">
             <span class="theme-icon-display">🌙</span>
           </button>
-          <button type="button" class="btn-topbar-action" onclick="document.getElementById('tab-single-btn').click()">
+          <button type="button" class="btn-topbar-action" id="btn-topbar-action" onclick="document.getElementById('tab-single-btn').click()">
             <span>⚡</span> + New Audit
           </button>
         </div>
@@ -296,38 +296,38 @@
             </div>
 
             <!-- Recruiter Sovereign Override & Auto-Draft Communications -->
-            <div class="card recruiter-override-card" id="recruiter-override-section" style="margin-top: 24px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 20px;">
+            <div class="card recruiter-override-card" id="recruiter-override-section" style="margin-top: 24px; padding: 20px;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div>
                   <h4 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
                     <span>⚖️</span> Recruiter Sovereign Verdict Override
                   </h4>
-                  <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                  <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--color-text-muted);">
                     Recruiters maintain ultimate hiring authority to confirm or override AI recommendations with mandatory audit-logged justification.
                   </p>
                 </div>
-                <span class="badge" id="recruiter-status-badge" style="padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4);">
+                <span class="badge" id="recruiter-status-badge" style="padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; background: var(--color-info-bg); color: var(--color-primary); border: 1px solid var(--color-info-border);">
                   AI VERDICT
                 </span>
               </div>
 
               <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button type="button" class="btn-secondary" id="btn-override-shortlist" style="padding: 8px 16px; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.12); color: #34d399;">
+                <button type="button" class="btn-secondary" id="btn-override-shortlist" style="padding: 8px 16px;">
                   ✅ Shortlist Candidate
                 </button>
-                <button type="button" class="btn-secondary" id="btn-override-review" style="padding: 8px 16px; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.12); color: #fbbf24;">
+                <button type="button" class="btn-secondary" id="btn-override-review" style="padding: 8px 16px;">
                   🟡 Flag for Review
                 </button>
-                <button type="button" class="btn-secondary" id="btn-override-reject" style="padding: 8px 16px; border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.12); color: #f87171;">
+                <button type="button" class="btn-secondary" id="btn-override-reject" style="padding: 8px 16px;">
                   🛑 Reject Candidate
                 </button>
               </div>
 
-              <div id="override-input-box" style="margin-top: 14px; display: none; background: rgba(0,0,0,0.25); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
-                <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+              <div id="override-input-box" style="margin-top: 14px; display: none; padding: 14px; border-radius: 10px;">
+                <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px;">
                   MANDATORY AUDIT REASON FOR VERDICT OVERRIDE:
                 </label>
-                <input type="text" id="override-reason-input" placeholder="e.g. Verified deep private codebase / exceptional system architecture live interview" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15,23,42,0.6); color: #fff; font-size: 0.85rem;" />
+                <input type="text" id="override-reason-input" placeholder="e.g. Verified deep private codebase / exceptional system architecture live interview" style="width: 100%; padding: 10px 12px; border-radius: 8px; font-size: 0.85rem;" />
                 <div style="margin-top: 10px; display: flex; gap: 10px;">
                   <button type="button" class="btn-primary" id="btn-save-override" style="padding: 8px 18px; font-size: 0.85rem;">
                     Confirm & Record Override
@@ -337,38 +337,38 @@
                   </button>
                 </div>
               </div>
-              <div id="override-saved-notice" style="display: none; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px; border-radius: 8px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);"></div>
+              <div id="override-saved-notice" style="display: none; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px; border-radius: 8px;"></div>
             </div>
 
             <!-- Recruiter-Gated Auto-Draft Candidate Reply -->
-            <div class="card auto-reply-card" id="auto-reply-section" style="margin-top: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px;">
+            <div class="card auto-reply-card" id="auto-reply-section" style="margin-top: 16px; padding: 20px;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div>
                   <h4 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
                     <span>✉️</span> Auto-Drafted Candidate Reply
                   </h4>
-                  <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                  <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--color-text-muted);">
                     Recruiter-Gated: Staged safely in draft. Zero emails sent without explicit recruiter approval.
                   </p>
                 </div>
-                <span class="badge" id="reply-status-badge" style="padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; background: rgba(234,179,8,0.2); color: #facc15; border: 1px solid rgba(234,179,8,0.4);">
+                <span class="badge" id="reply-status-badge" style="padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid var(--color-warning-border);">
                   STAGED DRAFT
                 </span>
               </div>
 
-              <div style="margin-top: 14px; background: rgba(0,0,0,0.35); padding: 14px; border-radius: 10px; font-family: var(--font-mono, monospace); font-size: 0.82rem; border: 1px solid rgba(255,255,255,0.06);">
-                <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">Subject:</strong> <span id="reply-subject-preview">Interview Invitation</span></div>
-                <div id="reply-body-preview" style="white-space: pre-wrap; line-height: 1.5; color: #cbd5e1;"></div>
+              <div style="margin-top: 14px; background: var(--color-surface-hover); padding: 14px; border-radius: 10px; font-family: var(--font-mono, monospace); font-size: 0.82rem; border: 1px solid var(--color-border); color: var(--color-text);">
+                <div style="margin-bottom: 8px;"><strong style="color: var(--color-text-muted);">Subject:</strong> <span id="reply-subject-preview">Interview Invitation</span></div>
+                <div id="reply-body-preview" style="white-space: pre-wrap; line-height: 1.5; color: var(--color-text);"></div>
               </div>
 
               <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button type="button" class="btn-primary" id="btn-approve-reply" style="padding: 8px 18px; font-size: 0.85rem;">
                   👍 Approve Draft
                 </button>
-                <button type="button" class="btn-secondary" id="btn-send-reply" style="padding: 8px 18px; font-size: 0.85rem; border-color: rgba(16,185,129,0.5); color: #34d399; background: rgba(16,185,129,0.15);">
+                <button type="button" class="btn-success" id="btn-send-reply" style="padding: 8px 18px; font-size: 0.85rem;">
                   🚀 Send Email Now
                 </button>
-                <span id="reply-action-status" style="display: none; font-size: 0.85rem; color: #34d399; font-weight: 600;"></span>
+                <span id="reply-action-status" style="display: none; font-size: 0.85rem; color: var(--color-success); font-weight: 600;"></span>
               </div>
             </div>
 
@@ -524,7 +524,7 @@
         <div class="card">
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <span class="badge-pill" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border-color: #10b981;">OPTION A</span>
+              <span class="badge-pill pill-success">OPTION A</span>
               <h2 style="font-size: 18px;">Direct Inbox Sync</h2>
             </div>
             <p class="subtitle">Connect company Gmail or Outlook to automatically scan for unread job applications.</p>
@@ -571,7 +571,7 @@
         <div class="card">
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <span class="badge-pill" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border-color: #6366f1;">OPTION B</span>
+              <span class="badge-pill pill-indigo">OPTION B</span>
               <h2 style="font-size: 18px;">Forwarding Alias & Webhook</h2>
             </div>
             <p class="subtitle">Zero security friction: forward candidate emails to your dedicated screening address.</p>
@@ -609,7 +609,7 @@
           <div class="card-header">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981;">DAEMON</span>
+                <span class="badge-pill pill-success">DAEMON</span>
                 <h2 style="font-size: 18px;">Automated Background Poller</h2>
               </div>
               <span class="status-indicator" id="poller-status-indicator">
@@ -646,7 +646,7 @@
         <div class="card">
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-              <span class="badge-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: #f59e0b;">ALERTS</span>
+              <span class="badge-pill pill-warning">ALERTS</span>
               <h2 style="font-size: 18px;">Recruiter Morning Digest Dispatch</h2>
             </div>
             <p class="subtitle">Deliver automated 9:00 AM candidate briefings directly to your hiring team's Slack or WhatsApp.</p>
@@ -667,7 +667,7 @@
               <span>💬</span> Send Slack Digest
             </button>
           </div>
-          <div id="digest-feedback" style="display: none; margin-top: 12px; font-size: 12px; font-family: var(--font-mono); padding: 8px 12px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);"></div>
+          <div id="digest-feedback" style="display: none; margin-top: 12px; font-size: 12px; font-family: var(--font-mono); padding: 8px 12px; border-radius: 8px; background: var(--color-success-bg); color: var(--color-success); border: 1px solid var(--color-success-border);"></div>
         </div>
       </div>
     </section>
@@ -684,7 +684,7 @@
         <div class="modal-body">
           <div class="form-group">
             <label>Recipient:</label>
-            <span id="modal-recipient" style="font-family: var(--font-mono); color: #a5b4fc;">candidate@example.com</span>
+            <span id="modal-recipient" style="font-family: var(--font-mono); color: var(--color-indigo);">candidate@example.com</span>
           </div>
           <div class="form-group">
             <label>Subject Line:</label>
@@ -773,6 +773,6 @@
       </div>
     </div>
 
-  <script src="/static/app.js?v=20260909_allbuttonsworking"></script>
+  <script src="/static/app.js?v=20260909_color_redesign"></script>
 </body>
 </html>
