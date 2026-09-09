@@ -108,16 +108,37 @@
       </div>
     </aside>
 
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
     <!-- Main Content Workspace Area -->
     <div class="workspace-main">
       <header class="workspace-topbar">
         <div class="topbar-left">
+          <button type="button" class="btn-sidebar-toggle" id="btn-sidebar-toggle" aria-label="Toggle Navigation Sidebar" title="Toggle Sidebar (Ctrl+B)">
+            <span class="hamburger-line line-1"></span>
+            <span class="hamburger-line line-2"></span>
+            <span class="hamburger-line line-3"></span>
+          </button>
+          <div class="topbar-divider"></div>
           <div class="topbar-view-indicator">
             <span class="topbar-view-icon">📂</span>
             <span class="topbar-view-title" id="topbar-current-view">Single Candidate Audit</span>
           </div>
         </div>
+
+        <div class="topbar-center">
+          <div class="topbar-search-wrap">
+            <span class="search-icon">⚡</span>
+            <input type="text" id="topbar-quick-search" placeholder="Quick search candidates, skills, repos... (⌘K)" autocomplete="off" />
+            <kbd class="search-kbd">⌘K</kbd>
+          </div>
+        </div>
+
         <div class="topbar-right">
+          <div class="topbar-status-badge online">
+            <span class="pulse-beacon"></span>
+            <span class="status-text">Engine Ready</span>
+          </div>
           <div class="topbar-metric-pill">
             <span class="pill-label">Screen Speed</span>
             <span class="pill-value">&lt; 2.5s</span>

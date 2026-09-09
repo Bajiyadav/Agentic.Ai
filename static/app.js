@@ -7,6 +7,7 @@ let currentActiveReplyId = null;
 let pendingOverrideDecision = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+  initSidebarAndTopbar();
   initTabs();
   initSingleAudit();
   initBatchAudit();
@@ -25,6 +26,91 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchHealth();
   fetchHistory();
 });
+
+// ================= SIDEBAR & TOPBAR CONTROLS =================
+function initSidebarAndTopbar() {
+  const toggleBtn = document.getElementById('btn-sidebar-toggle');
+  const workspace = document.querySelector('.app-workspace');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const quickSearch = document.getElementById('topbar-quick-search');
+
+  // Restore saved collapse preference on desktop
+  const savedCollapsed = localStorage.getItem('auditagent_sidebar_collapsed');
+  if (savedCollapsed === 'true' && window.innerWidth > 1024) {
+    workspace?.classList.add('sidebar-collapsed');
+  }
+
+  function toggleSidebar() {
+    if (!workspace) return;
+    if (window.innerWidth <= 1024) {
+      workspace.classList.toggle('sidebar-open');
+    } else {
+      workspace.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('auditagent_sidebar_collapsed', workspace.classList.contains('sidebar-collapsed'));
+    }
+  }
+
+  toggleBtn?.addEventListener('click', toggleSidebar);
+  backdrop?.addEventListener('click', () => {
+    workspace?.classList.remove('sidebar-open');
+  });
+
+  // Global Keyboard Shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Cmd+B / Ctrl+B: Toggle Sidebar
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      toggleSidebar();
+    }
+    // Cmd+K / Ctrl+K: Focus Quick Search
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      quickSearch?.focus();
+      quickSearch?.select();
+    }
+  });
+
+  // Quick Search Filtering
+  quickSearch?.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    
+    // Filter Batch Leaderboard rows if present
+    const batchRows = document.querySelectorAll('#batch-table-body tr');
+    batchRows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(q) ? '' : 'none';
+    });
+
+    // Filter Jobs list if present
+    const jobItems = document.querySelectorAll('.job-item');
+    jobItems.forEach(item => {
+      const text = item.textContent.toLowerCase();
+      item.style.display = text.includes(q) ? '' : 'none';
+    });
+
+    // Filter Compare picker items if present
+    const pickItems = document.querySelectorAll('.compare-pick-item');
+    pickItems.forEach(item => {
+      const text = item.textContent.toLowerCase();
+      item.style.display = text.includes(q) ? '' : 'none';
+    });
+  });
+
+  quickSearch?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      quickSearch.value = '';
+      quickSearch.dispatchEvent(new Event('input'));
+      quickSearch.blur();
+    } else if (e.key === 'Enter') {
+      // If not on batch, jump to batch screener to see all candidates
+      const batchBtn = document.getElementById('tab-batch-btn');
+      const batchView = document.getElementById('view-batch');
+      if (batchView && batchView.style.display === 'none') {
+        batchBtn?.click();
+      }
+    }
+  });
+}
 
 // ================= TABS NAVIGATION =================
 function initTabs() {
@@ -56,6 +142,9 @@ function initTabs() {
 
       btn.classList.add('active');
       view.style.display = 'block';
+
+      // Close mobile drawer on tab selection
+      document.querySelector('.app-workspace')?.classList.remove('sidebar-open');
 
       if (topbarTitle && tab.title) {
         topbarTitle.textContent = tab.title;
