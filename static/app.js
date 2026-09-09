@@ -38,9 +38,7 @@ function initSidebarAndTopbar() {
 
     if (topbarThemeBtn) {
       const icon = topbarThemeBtn.querySelector('.theme-icon-display');
-      const text = topbarThemeBtn.querySelector('.theme-name');
       if (icon) icon.textContent = isLight ? '🌙' : '☀️';
-      if (text) text.textContent = isLight ? 'Dark Mode' : 'White Mode';
       topbarThemeBtn.title = isLight ? 'Switch to Dark Mode' : 'Switch to White Mode';
     }
 

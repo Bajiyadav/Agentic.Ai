@@ -891,29 +891,28 @@ body {
 }
 
 .btn-theme-toggle {
-  background: rgba(255, 255, 255, 0.05);
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--bg-card);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-subtle);
-  color: var(--text-main);
-  padding: 6px 13px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--text-pure);
+  font-size: 15px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  font-family: var(--font-display);
-  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
 }
 
 .btn-theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: var(--primary);
-  color: var(--text-pure);
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: var(--primary);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px var(--primary-glow);
 }
