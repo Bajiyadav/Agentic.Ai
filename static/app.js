@@ -30,9 +30,47 @@ document.addEventListener('DOMContentLoaded', () => {
 // ================= SIDEBAR & TOPBAR CONTROLS =================
 function initSidebarAndTopbar() {
   const toggleBtn = document.getElementById('btn-sidebar-toggle');
+  const innerToggleBtn = document.getElementById('btn-sidebar-inner-toggle');
   const workspace = document.querySelector('.app-workspace');
   const backdrop = document.getElementById('sidebar-backdrop');
   const quickSearch = document.getElementById('topbar-quick-search');
+  const topbarThemeBtn = document.getElementById('btn-theme-toggle');
+  const sidebarThemeBtn = document.getElementById('btn-sidebar-theme-toggle');
+
+  // Theme Management (Dark Navy #0B1220 <-> Crisp White #F8FAFC)
+  function applyTheme(theme) {
+    const isLight = theme === 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('auditagent_theme', theme);
+
+    if (topbarThemeBtn) {
+      const icon = topbarThemeBtn.querySelector('.theme-icon-display');
+      const text = topbarThemeBtn.querySelector('.theme-name');
+      if (icon) icon.textContent = isLight ? '🌙' : '☀️';
+      if (text) text.textContent = isLight ? 'Dark Mode' : 'White Mode';
+      topbarThemeBtn.title = isLight ? 'Switch to Dark Mode' : 'Switch to White Mode';
+    }
+
+    if (sidebarThemeBtn) {
+      const glyph = sidebarThemeBtn.querySelector('.theme-toggle-glyph');
+      const txt = sidebarThemeBtn.querySelector('.theme-toggle-txt');
+      if (glyph) glyph.textContent = isLight ? '🌙' : '☀️';
+      if (txt) txt.textContent = isLight ? 'Switch to Dark Mode' : 'Switch to White Mode';
+    }
+  }
+
+  const savedTheme = localStorage.getItem('auditagent_theme') || 'dark';
+  applyTheme(savedTheme);
+
+  function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
+    applyTheme(nextTheme);
+  }
+
+  topbarThemeBtn?.addEventListener('click', toggleTheme);
+  sidebarThemeBtn?.addEventListener('click', toggleTheme);
 
   // Restore saved collapse preference on desktop
   const savedCollapsed = localStorage.getItem('auditagent_sidebar_collapsed');
@@ -51,6 +89,7 @@ function initSidebarAndTopbar() {
   }
 
   toggleBtn?.addEventListener('click', toggleSidebar);
+  innerToggleBtn?.addEventListener('click', toggleSidebar);
   backdrop?.addEventListener('click', () => {
     workspace?.classList.remove('sidebar-open');
   });

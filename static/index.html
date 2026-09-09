@@ -25,6 +25,11 @@
             <span class="logo-title">AuditAgent<span class="highlight">.ai</span></span>
             <span class="badge-pill">Enterprise AI</span>
           </div>
+          <button type="button" class="btn-sidebar-inner-toggle" id="btn-sidebar-inner-toggle" aria-label="Toggle Sidebar" title="Collapse Sidebar (Ctrl+B)">
+            <span class="hamburger-line line-1"></span>
+            <span class="hamburger-line line-2"></span>
+            <span class="hamburger-line line-3"></span>
+          </button>
         </div>
         <div class="workspace-tenant-pill">
           <span class="tenant-icon">🏢</span>
@@ -96,6 +101,10 @@
         <button type="button" class="btn-pricing" id="btn-open-pricing">
           <span>💎</span> Plans & Credits
         </button>
+        <button type="button" class="btn-theme-toggle-sidebar" id="btn-sidebar-theme-toggle" aria-label="Toggle Dark / White Mode">
+          <span class="theme-toggle-glyph">☀️</span>
+          <span class="theme-toggle-txt">Switch to White Mode</span>
+        </button>
         <div class="sidebar-status-box">
           <div class="status-indicator online" id="api-status">
             <span class="dot"></span> Engine Online
@@ -147,6 +156,10 @@
             <span class="pill-label">Concordance</span>
             <span class="pill-value">96.8%</span>
           </div>
+          <button type="button" class="btn-theme-toggle" id="btn-theme-toggle" aria-label="Toggle Dark / White Mode" title="Switch Theme (Dark / White)">
+            <span class="theme-icon-display">☀️</span>
+            <span class="theme-name">White Mode</span>
+          </button>
           <button type="button" class="btn-topbar-action" onclick="document.getElementById('tab-single-btn').click()">
             <span>⚡</span> + New Audit
           </button>
