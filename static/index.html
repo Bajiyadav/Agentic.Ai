@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume Screener SaaS | Claim vs Evidence AI Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Ambient Lighting Effects -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <div class="app-container">
+    <!-- Navbar -->
+    <header class="navbar">
+      <div class="logo-area">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <span class="logo-title">AuditAgent<span class="highlight">.ai</span></span>
+          <span class="badge-pill">Enterprise Screener</span>
+        </div>
+      </div>
+      <div class="nav-metrics">
+        <button type="button" class="btn-copilot" id="btn-open-copilot">
+          <span>🤖</span> Recruiter Copilot
+        </button>
+        <button type="button" class="btn-pricing" id="btn-open-pricing">
+          <span>💎</span> Plans & Pricing
+        </button>
+        <div class="metric-item">
+          <span class="metric-label">Cache Hit Rate</span>
+          <span class="metric-val" id="cache-hit-rate">--%</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">API Status</span>
+          <span class="status-indicator online" id="api-status">
+            <span class="dot"></span> Online
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- App Navigation Tabs -->
+    <nav class="app-tabs">
+      <button class="tab-btn active" id="tab-single-btn">
+        <span>⚡</span> Single Audit
+      </button>
+      <button class="tab-btn" id="tab-batch-btn">
+        <span>📥</span> Batch Leaderboard
+        <span class="tab-badge">Parallel</span>
+      </button>
+      <button class="tab-btn" id="tab-email-btn">
+        <span>✉️</span> Email Ingestion Hub
+        <span class="tab-badge-accent">Enterprise</span>
+      </button>
+      <button class="tab-btn" id="tab-jobs-btn">
+        <span>🎯</span> Jobs & Matching
+      </button>
+      <button class="tab-btn" id="tab-pipeline-btn">
+        <span>📋</span> Kanban Pipeline
+      </button>
+      <button class="tab-btn" id="tab-compare-btn">
+        <span>⚖️</span> Compare
+      </button>
+      <button class="tab-btn" id="tab-graph-btn">
+        <span>🕸️</span> Evidence Graph
+      </button>
+      <button class="tab-btn" id="tab-assessments-btn">
+        <span>🧪</span> Assessments
+      </button>
+      <button class="tab-btn" id="tab-interviews-btn">
+        <span>🎙️</span> AI Interviewer
+      </button>
+      <button class="tab-btn" id="tab-analytics-btn">
+        <span>📊</span> Analytics
+      </button>
+    </nav>
+
+    <!-- ================= VIEW 1: SINGLE CANDIDATE AUDIT ================= -->
+    <section class="tab-view" id="view-single">
+      <main class="main-layout">
+        <!-- Left Column: Input Form -->
+        <section class="card input-card">
+          <div class="card-header">
+            <h2>Candidate Audit</h2>
+            <p class="subtitle">Cross-reference resume claims against public GitHub code</p>
+          </div>
+
+          <form id="screen-form">
+            <!-- Dropzone -->
+            <div class="dropzone" id="dropzone">
+              <input type="file" id="resume-input" accept=".pdf" style="display: none;">
+              <div class="dropzone-inner" id="dropzone-content">
+                <div class="upload-icon">📄</div>
+                <p class="primary-text">Drag & drop resume PDF here</p>
+                <p class="secondary-text">or <span class="browse-link">browse files</span></p>
+                <div class="file-tag" id="file-tag" style="display: none;">
+                  <span id="file-name">sample_resume.pdf</span>
+                  <span class="remove-file" id="remove-file">✕</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Load Sample Resume Button -->
+            <div class="quick-demo-row">
+              <button type="button" class="btn-secondary-sm" id="btn-load-sample">
+                <span>⚡</span> Use Sample Resume
+              </button>
+              <span class="hint-text">Aarav Sharma (3 yrs Full-Stack)</span>
+            </div>
+
+            <!-- GitHub Username Field -->
+            <div class="form-group">
+              <label for="github-username">GitHub Profile Handle</label>
+              <div class="input-wrapper">
+                <span class="input-prefix">github.com/</span>
+                <input type="text" id="github-username" placeholder="e.g. tiangolo or octocat" autocomplete="off">
+              </div>
+              <!-- Quick Chips -->
+              <div class="chip-row">
+                <span class="chip-label">Try Demo:</span>
+                <button type="button" class="chip" data-user="tiangolo">@tiangolo (Match)</button>
+                <button type="button" class="chip" data-user="octocat">@octocat (Fluff)</button>
+              </div>
+            </div>
+
+            <!-- Webhook URL (Optional Enterprise) -->
+            <div class="form-group">
+              <label for="webhook-url">ATS Webhook URL <span class="dim">(Optional)</span></label>
+              <input type="url" id="webhook-url" placeholder="https://api.yourcompany.com/ats/webhook">
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn-primary" id="btn-submit">
+              <span class="btn-icon">🚀</span>
+              <span class="btn-text">Audit Candidate Code</span>
+            </button>
+          </form>
+        </section>
+
+        <!-- Right Column: Results Area -->
+        <section class="results-container">
+          <!-- Initial Placeholder State -->
+          <div class="placeholder-card" id="state-placeholder">
+            <div class="placeholder-icon">🎯</div>
+            <h3>Ready for Candidate Audit</h3>
+            <p>Upload a resume PDF and supply a GitHub handle to cross-examine technical claims against verified source code.</p>
+            <div class="feature-pills">
+              <span>⚡ Sub-second caching</span>
+              <span>🤖 Multi-model consensus</span>
+              <span>🚩 Automated red-flag detection</span>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div class="card loading-card" id="state-loading" style="display: none;">
+            <div class="spinner-radar">
+              <div class="radar-circle"></div>
+              <div class="radar-sweep"></div>
+            </div>
+            <h3 id="loading-stage">Extracting Resume Claims...</h3>
+            <p class="loading-sub" id="loading-detail">Parsing PDF structure and technical taxonomy</p>
+            <div class="progress-track">
+              <div class="progress-fill" id="progress-bar"></div>
+            </div>
+          </div>
+
+          <!-- Result Scorecard View -->
+          <div class="result-card" id="state-result" style="display: none;">
+            <!-- Candidate Banner -->
+            <div class="result-header">
+              <div>
+                <div class="candidate-row">
+                  <h2 id="res-candidate-name">Aarav Sharma</h2>
+                  <span class="rec-badge" id="res-rec-badge">SHORTLIST</span>
+                </div>
+                <div class="meta-row">
+                  <span id="res-github-link">@github_user</span>
+                  <span class="dot-sep">•</span>
+                  <span id="res-experience">3.0 yrs experience</span>
+                  <span class="dot-sep">•</span>
+                  <span id="res-speed-badge">⚡ 0.8s (SmartCache)</span>
+                </div>
+              </div>
+              <!-- Overall Score Circle -->
+              <div class="score-dial-wrap">
+                <div class="score-circle" id="score-circle">
+                  <span class="score-number" id="res-overall-score">85</span>
+                  <span class="score-denom">/ 100</span>
+                </div>
+                <span class="dial-caption">Viability Score</span>
+              </div>
+            </div>
+
+            <!-- Executive Summary -->
+            <div class="summary-box">
+              <span class="summary-label">EXECUTIVE SUMMARY</span>
+              <p id="res-executive-summary">Candidate demonstrates verified alignment with stated requirements.</p>
+            </div>
+
+            <!-- Metric Triad -->
+            <div class="metrics-triad">
+              <div class="triad-card">
+                <div class="triad-head">
+                  <span>Skills Match</span>
+                  <span class="triad-val" id="res-skills-score">80%</span>
+                </div>
+                <div class="triad-bar"><div class="triad-fill" id="res-skills-bar"></div></div>
+                <span class="triad-sub">40% weight</span>
+              </div>
+              <div class="triad-card">
+                <div class="triad-head">
+                  <span>Code Quality</span>
+                  <span class="triad-val" id="res-quality-score">92%</span>
+                </div>
+                <div class="triad-bar"><div class="triad-fill" id="res-quality-bar"></div></div>
+                <span class="triad-sub">30% weight</span>
+              </div>
+              <div class="triad-card">
+                <div class="triad-head">
+                  <span>Consistency</span>
+                  <span class="triad-val" id="res-consistency-score">85%</span>
+                </div>
+                <div class="triad-bar"><div class="triad-fill" id="res-consistency-bar"></div></div>
+                <span class="triad-sub">30% weight</span>
+              </div>
+            </div>
+
+            <!-- Claims vs Evidence Split -->
+            <div class="split-grid">
+              <!-- Left: Flags -->
+              <div class="split-col">
+                <h4>🔴 Red Flags & Discrepancies</h4>
+                <ul class="flag-list red-flags" id="res-red-flags">
+                  <li>No red flags detected.</li>
+                </ul>
+                <h4 style="margin-top: 16px;">🟢 Verified Strengths</h4>
+                <ul class="flag-list green-flags" id="res-green-flags">
+                  <li>Verified original repositories.</li>
+                </ul>
+              </div>
+
+              <!-- Right: Evidence Breakdown -->
+              <div class="split-col">
+                <h4>📊 Verified GitHub Evidence</h4>
+                <div class="evidence-stats" id="res-evidence-stats">
+                  <div class="stat-row">
+                    <span>Public Repositories</span>
+                    <strong id="stat-repos">12 (10 original)</strong>
+                  </div>
+                  <div class="stat-row">
+                    <span>Total Community Stars</span>
+                    <strong id="stat-stars">48 ⭐</strong>
+                  </div>
+                  <div class="stat-row">
+                    <span>Documentation Rate</span>
+                    <strong id="stat-docs">85% documented</strong>
+                  </div>
+                  <div class="stat-row">
+                    <span>Languages Detected</span>
+                    <strong id="stat-langs">Python, TypeScript</strong>
+                  </div>
+                </div>
+
+                <!-- Multi-Model Consensus Votes -->
+                <h4 style="margin-top: 16px;">🤖 Multi-Model Consensus</h4>
+                <div class="model-votes-box" id="res-model-votes">
+                  <!-- Injected via JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Recruiter Sovereign Override & Auto-Draft Communications -->
+            <div class="card recruiter-override-card" id="recruiter-override-section" style="margin-top: 24px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <h4 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                    <span>⚖️</span> Recruiter Sovereign Verdict Override
+                  </h4>
+                  <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                    Recruiters maintain ultimate hiring authority to confirm or override AI recommendations with mandatory audit-logged justification.
+                  </p>
+                </div>
+                <span class="badge" id="recruiter-status-badge" style="padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4);">
+                  AI VERDICT
+                </span>
+              </div>
+
+              <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary" id="btn-override-shortlist" style="padding: 8px 16px; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.12); color: #34d399;">
+                  ✅ Shortlist Candidate
+                </button>
+                <button type="button" class="btn-secondary" id="btn-override-review" style="padding: 8px 16px; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.12); color: #fbbf24;">
+                  🟡 Flag for Review
+                </button>
+                <button type="button" class="btn-secondary" id="btn-override-reject" style="padding: 8px 16px; border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.12); color: #f87171;">
+                  🛑 Reject Candidate
+                </button>
+              </div>
+
+              <div id="override-input-box" style="margin-top: 14px; display: none; background: rgba(0,0,0,0.25); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);">
+                <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">
+                  MANDATORY AUDIT REASON FOR VERDICT OVERRIDE:
+                </label>
+                <input type="text" id="override-reason-input" placeholder="e.g. Verified deep private codebase / exceptional system architecture live interview" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15,23,42,0.6); color: #fff; font-size: 0.85rem;" />
+                <div style="margin-top: 10px; display: flex; gap: 10px;">
+                  <button type="button" class="btn-primary" id="btn-save-override" style="padding: 8px 18px; font-size: 0.85rem;">
+                    Confirm & Record Override
+                  </button>
+                  <button type="button" class="btn-secondary" id="btn-cancel-override" style="padding: 8px 14px; font-size: 0.85rem;">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              <div id="override-saved-notice" style="display: none; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px; border-radius: 8px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);"></div>
+            </div>
+
+            <!-- Recruiter-Gated Auto-Draft Candidate Reply -->
+            <div class="card auto-reply-card" id="auto-reply-section" style="margin-top: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                  <h4 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                    <span>✉️</span> Auto-Drafted Candidate Reply
+                  </h4>
+                  <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--text-muted);">
+                    Recruiter-Gated: Staged safely in draft. Zero emails sent without explicit recruiter approval.
+                  </p>
+                </div>
+                <span class="badge" id="reply-status-badge" style="padding: 5px 12px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; background: rgba(234,179,8,0.2); color: #facc15; border: 1px solid rgba(234,179,8,0.4);">
+                  STAGED DRAFT
+                </span>
+              </div>
+
+              <div style="margin-top: 14px; background: rgba(0,0,0,0.35); padding: 14px; border-radius: 10px; font-family: var(--font-mono, monospace); font-size: 0.82rem; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="margin-bottom: 8px;"><strong style="color: #94a3b8;">Subject:</strong> <span id="reply-subject-preview">Interview Invitation</span></div>
+                <div id="reply-body-preview" style="white-space: pre-wrap; line-height: 1.5; color: #cbd5e1;"></div>
+              </div>
+
+              <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-primary" id="btn-approve-reply" style="padding: 8px 18px; font-size: 0.85rem;">
+                  👍 Approve Draft
+                </button>
+                <button type="button" class="btn-secondary" id="btn-send-reply" style="padding: 8px 18px; font-size: 0.85rem; border-color: rgba(16,185,129,0.5); color: #34d399; background: rgba(16,185,129,0.15);">
+                  🚀 Send Email Now
+                </button>
+                <span id="reply-action-status" style="display: none; font-size: 0.85rem; color: #34d399; font-weight: 600;"></span>
+              </div>
+            </div>
+
+            <!-- Actions Footer -->
+            <div class="result-actions">
+              <button class="btn-secondary" id="btn-download-json">
+                <span>📥</span> Download JSON Scorecard
+              </button>
+              <button class="btn-secondary" id="btn-reset">
+                <span>🔄</span> Screen Another Candidate
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Recent Screenings History Section -->
+      <section class="card history-card">
+        <div class="history-header">
+          <h3>Recent Candidate Screenings</h3>
+          <span class="dim" id="history-count">0 candidates screened</span>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="empty-history">No screening history yet. Run an audit above!</div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ================= VIEW 2: EMAIL & BATCH SCREENER ================= -->
+    <section class="tab-view" id="view-batch" style="display: none;">
+      <!-- Batch Hero & Uploader -->
+      <div class="card batch-hero-card">
+        <div class="batch-hero-header">
+          <div>
+            <h2>📥 Inbound Email & Morning Batch Screener</h2>
+            <p class="subtitle">Forward recruitment threads or drop bulk applications to automatically audit and rank 10–200 candidates in parallel.</p>
+          </div>
+          <button type="button" class="btn-primary-accent" id="btn-sim-batch">
+            <span>⚡</span> Simulate Morning Batch (10 Inbound Emails)
+          </button>
+        </div>
+
+        <!-- Bulk Upload Dropzone -->
+        <div class="dropzone batch-dropzone" id="batch-dropzone">
+          <input type="file" id="batch-files-input" accept=".pdf,.eml" multiple style="display: none;">
+          <div class="dropzone-inner">
+            <div class="upload-icon">📬</div>
+            <p class="primary-text">Drag & drop bulk PDF resumes or forwarded .eml email threads</p>
+            <p class="secondary-text">or <span class="browse-link" id="batch-browse">select multiple files</span> to run parallel audit</p>
+            <div class="file-tag" id="batch-file-tag" style="display: none;">
+              <span id="batch-files-label">0 files selected</span>
+              <button type="button" class="btn-primary-sm" id="btn-start-batch-upload" style="margin-left: 10px;">Run Batch Audit</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Loading State -->
+      <div class="card loading-card" id="batch-state-loading" style="display: none; margin-top: 20px;">
+        <div class="spinner-radar">
+          <div class="radar-circle"></div>
+          <div class="radar-sweep"></div>
+        </div>
+        <h3 id="batch-loading-title">Processing Inbound Candidate Applications...</h3>
+        <p class="loading-sub" id="batch-loading-detail">Extracting resumes, auditing GitHub repositories, and computing consensus</p>
+        <div class="progress-track">
+          <div class="progress-fill" id="batch-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Batch Results & Leaderboard -->
+      <div class="batch-results-wrap" id="batch-results-wrap" style="display: none; margin-top: 24px;">
+        <!-- Top Metrics KPI Cards -->
+        <div class="batch-kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">TOTAL APPLICATIONS</span>
+            <span class="kpi-num" id="kpi-total">0</span>
+            <span class="kpi-sub" id="kpi-time">Screened in 2.1s</span>
+          </div>
+          <div class="kpi-card kpi-shortlist">
+            <span class="kpi-label">🟢 SHORTLIST (TOP)</span>
+            <span class="kpi-num text-green" id="kpi-shortlist">0</span>
+            <span class="kpi-sub">Ready for Interview</span>
+          </div>
+          <div class="kpi-card kpi-review">
+            <span class="kpi-label">🟡 MANUAL REVIEW</span>
+            <span class="kpi-num text-yellow" id="kpi-review">0</span>
+            <span class="kpi-sub">Mixed Signals</span>
+          </div>
+          <div class="kpi-card kpi-reject">
+            <span class="kpi-label">🔴 AUTO-REJECTED</span>
+            <span class="kpi-num text-red" id="kpi-reject">0</span>
+            <span class="kpi-sub">Resume Fluff / No Code</span>
+          </div>
+        </div>
+
+        <!-- Leaderboard Card -->
+        <div class="card leaderboard-card">
+          <div class="leaderboard-header">
+            <div>
+              <h3>Candidate Leaderboard</h3>
+              <p class="subtitle" style="margin-bottom: 0;">Ranked by verified technical code ability and consistency</p>
+            </div>
+            <div class="leaderboard-actions">
+              <!-- Filter Buttons -->
+              <div class="filter-group">
+                <button class="filter-btn active" data-filter="ALL">All (<span id="count-filter-all">0</span>)</button>
+                <button class="filter-btn" data-filter="SHORTLIST">Shortlist (<span id="count-filter-short">0</span>)</button>
+                <button class="filter-btn" data-filter="REVIEW">Review (<span id="count-filter-rev">0</span>)</button>
+                <button class="filter-btn" data-filter="REJECT">Rejected (<span id="count-filter-rej">0</span>)</button>
+              </div>
+              <!-- CSV Download Button -->
+              <a id="btn-download-csv" class="btn-primary" href="#" style="text-decoration: none; padding: 8px 16px; font-size: 13px;">
+                <span>📥</span> Download Ranked CSV
+              </a>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="table-responsive">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">Rank</th>
+                  <th>Candidate</th>
+                  <th>Score</th>
+                  <th>Verdict</th>
+                  <th>Skills Match</th>
+                  <th>Code Quality</th>
+                  <th>GitHub Evidence</th>
+                  <th>Key Finding</th>
+                  <th>Draft Reply</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboard-tbody">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 3: EMAIL INGESTION HUB ================= -->
+    <section class="tab-view" id="view-email" style="display: none;">
+      <div class="card batch-hero-card">
+        <h2>✉️ Enterprise Email Ingestion Hub</h2>
+        <p class="subtitle">Choose how your hiring team connects: direct inbox sync or dedicated forwarding alias.</p>
+      </div>
+
+      <div class="main-layout" style="grid-template-columns: 1fr 1fr; margin-top: 20px;">
+        <!-- Option A: Direct Inbox Sync -->
+        <div class="card">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="badge-pill" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border-color: #10b981;">OPTION A</span>
+              <h2 style="font-size: 18px;">Direct Inbox Sync</h2>
+            </div>
+            <p class="subtitle">Connect company Gmail or Outlook to automatically scan for unread job applications.</p>
+          </div>
+
+          <form id="email-sync-form">
+            <div class="form-group">
+              <label>Email Provider</label>
+              <select id="imap-provider" class="custom-select">
+                <option value="gmail">Google Workspace / Gmail (IMAP)</option>
+                <option value="outlook">Microsoft Outlook / Office365</option>
+                <option value="custom">Custom Corporate Mail Server</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Email Address</label>
+              <input type="email" id="imap-user" placeholder="recruiter@company.com" value="recruiter@company.com">
+            </div>
+
+            <div class="form-group">
+              <label>App Password / Token</label>
+              <input type="password" id="imap-pass" placeholder="••••••••••••" value="demo-app-password">
+              <span class="hint-text">Use a Google App Password (2FA safe)</span>
+            </div>
+
+            <div class="form-group">
+              <label>Interview Scheduling Link (Calendly)</label>
+              <input type="url" id="email-calendly" placeholder="https://calendly.com/your-team/30min" value="https://calendly.com/techcorp-hiring/30min">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+              <button type="button" class="btn-primary" id="btn-save-email-config" style="flex: 1;">
+                <span>💾</span> Save Config
+              </button>
+              <button type="button" class="btn-primary-accent" id="btn-trigger-inbox-sync" style="flex: 1.2;">
+                <span>⚡</span> Scan & Screen Inbox Now
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Option B: Forwarding Alias & Webhook -->
+        <div class="card">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="badge-pill" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border-color: #6366f1;">OPTION B</span>
+              <h2 style="font-size: 18px;">Forwarding Alias & Webhook</h2>
+            </div>
+            <p class="subtitle">Zero security friction: forward candidate emails to your dedicated screening address.</p>
+          </div>
+
+          <div class="alias-box">
+            <span class="alias-label">YOUR DEDICATED SCREENING ADDRESS:</span>
+            <div class="alias-input-row">
+              <input type="text" id="company-alias" readonly value="screen-techcorp@auditagent.ai" class="alias-input">
+              <button type="button" class="btn-secondary-sm" id="btn-copy-alias">Copy</button>
+            </div>
+          </div>
+
+          <div class="guide-box">
+            <h4>⚡ 30-Second Gmail Auto-Forward Setup:</h4>
+            <ol>
+              <li>Go to <b>Gmail Settings</b> $\rightarrow$ <b>Filters and Blocked Addresses</b>.</li>
+              <li>Create filter: <code>Subject contains "Application" OR "Resume"</code></li>
+              <li>Check: <b>"Forward it to: screen-techcorp@auditagent.ai"</b>.</li>
+            </ol>
+          </div>
+
+          <div style="margin-top: 24px;">
+            <button type="button" class="btn-secondary" id="btn-test-webhook" style="width: 100%; justify-content: center;">
+              <span>🚀</span> Send Test Inbound Email Payload
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Automation & Dispatch Control Grid -->
+      <div class="grid-2col" style="margin-top: 24px;">
+        <!-- Card 1: Automated Background Poller -->
+        <div class="card">
+          <div class="card-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="badge-pill" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981;">DAEMON</span>
+                <h2 style="font-size: 18px;">Automated Background Poller</h2>
+              </div>
+              <span class="status-indicator" id="poller-status-indicator">
+                <span class="dot"></span> <span id="poller-status-text">Stopped</span>
+              </span>
+            </div>
+            <p class="subtitle">Continuously audits new incoming candidate emails in the background without manual intervention.</p>
+          </div>
+
+          <div style="margin: 16px 0;">
+            <div class="form-group">
+              <label>Polling Frequency</label>
+              <select id="poller-interval" class="custom-select">
+                <option value="5">Every 5 minutes (Real-time)</option>
+                <option value="15" selected>Every 15 minutes (Recommended)</option>
+                <option value="30">Every 30 minutes</option>
+                <option value="60">Every 60 minutes</option>
+              </select>
+            </div>
+            <p class="hint-text">When enabled, the background worker checks the configured IMAP inbox, parallel-audits attached resumes, and generates draft replies automatically.</p>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="button" class="btn-primary" id="btn-toggle-poller" style="flex: 1;">
+              <span id="btn-poller-icon">▶️</span> <span id="btn-poller-text">Start Poller</span>
+            </button>
+            <button type="button" class="btn-secondary-sm" id="btn-check-poller-status" style="padding: 0 16px;">
+              <span>🔄</span> Refresh Status
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: Recruiter Morning Digest Dispatcher -->
+        <div class="card">
+          <div class="card-header">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span class="badge-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: #f59e0b;">ALERTS</span>
+              <h2 style="font-size: 18px;">Recruiter Morning Digest Dispatch</h2>
+            </div>
+            <p class="subtitle">Deliver automated 9:00 AM candidate briefings directly to your hiring team's Slack or WhatsApp.</p>
+          </div>
+
+          <div class="form-group">
+            <label>Slack Incoming Webhook URL <span class="dim">(Optional)</span></label>
+            <input type="url" id="digest-slack-url" placeholder="https://hooks.slack.com/services/..." value="https://hooks.slack.com/services/DEMO/RECRUITER/DIGEST">
+          </div>
+
+          <div class="form-group">
+            <label>WhatsApp Recruiter Phone <span class="dim">(Optional)</span></label>
+            <input type="tel" id="digest-whatsapp-phone" placeholder="+91 98765 43210" value="+91 98765 43210">
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button type="button" class="btn-secondary" id="btn-send-slack-digest" style="flex: 1; justify-content: center;">
+              <span>💬</span> Send Slack Digest
+            </button>
+            <button type="button" class="btn-secondary" id="btn-send-whatsapp-digest" style="flex: 1; justify-content: center;">
+              <span>📱</span> Send WhatsApp Brief
+            </button>
+          </div>
+          <div id="digest-feedback" style="display: none; margin-top: 12px; font-size: 12px; font-family: var(--font-mono); padding: 8px 12px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 4: JOBS & CANDIDATE MATCH MATRIX ================= -->
+    <section class="tab-view" id="view-jobs" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">🎯 Job Openings & Candidate Match Matrix</h2>
+          <p class="subtitle">Parse job descriptions into structured taxonomy and evaluate candidate-job fit across 4 dimension tiers.</p>
+        </div>
+        <div class="view-actions">
+          <button type="button" class="btn-primary" id="btn-show-job-modal">
+            <span>+</span> Post New Job Opening
+          </button>
+        </div>
+      </div>
+
+      <div class="jobs-layout">
+        <!-- Left: Active Job Openings List -->
+        <div class="card jobs-list-card">
+          <div class="card-header">
+            <h3>Active Requisitions</h3>
+            <span class="badge-pill" id="jobs-count-pill">0 Roles</span>
+          </div>
+          <div class="jobs-scroll-container" id="jobs-list-container">
+            <div class="empty-state">Loading active requisitions...</div>
+          </div>
+        </div>
+
+        <!-- Right: Selected Job Details & Candidate Match Matrix -->
+        <div class="card job-detail-card" id="job-detail-panel">
+          <div class="placeholder-card" id="jobs-placeholder">
+            <div class="placeholder-icon">🎯</div>
+            <h3>Select a Job Opening</h3>
+            <p>Select an opening on the left or create a new job requisition to cross-match audited candidates against required skills and experience.</p>
+          </div>
+          
+          <div id="job-detail-content" style="display: none;">
+            <div class="job-detail-header">
+              <div>
+                <h2 id="job-detail-title">Staff Distributed Systems Engineer</h2>
+                <div class="job-detail-meta">
+                  <span id="job-detail-dept">Engineering</span> • 
+                  <span id="job-detail-level">Staff</span> • 
+                  <span id="job-detail-exp">5+ years experience</span>
+                </div>
+              </div>
+              <div class="job-detail-actions">
+                <button type="button" class="btn-secondary-sm" id="btn-refresh-matches">
+                  <span>🔄</span> Refresh Matches
+                </button>
+              </div>
+            </div>
+
+            <!-- Structured Requirements Extracted -->
+            <div class="job-reqs-card">
+              <h4>Structured AI Extraction</h4>
+              <div class="reqs-grid">
+                <div>
+                  <span class="req-label">Required Tech Stack:</span>
+                  <div class="skill-chips" id="job-detail-skills"></div>
+                </div>
+                <div>
+                  <span class="req-label">Core Competencies:</span>
+                  <div class="skill-chips" id="job-detail-competencies"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Candidate Match Matrix -->
+            <div class="match-matrix-section">
+              <div class="matrix-header">
+                <h3>Candidate Match Matrix</h3>
+                <div class="match-trigger-row">
+                  <select id="select-candidate-for-match" class="custom-select">
+                    <option value="">Select Candidate to Match...</option>
+                  </select>
+                  <button type="button" class="btn-primary-sm" id="btn-run-match">
+                    <span>⚡</span> Compute Match
+                  </button>
+                </div>
+              </div>
+              
+              <div class="match-matrix-table-wrap">
+                <table class="data-table" id="match-matrix-table">
+                  <thead>
+                    <tr>
+                      <th>Candidate</th>
+                      <th>Match Score</th>
+                      <th>Tier Verdict</th>
+                      <th>Skill Coverage</th>
+                      <th>Exp Delta</th>
+                      <th>Missing Skills</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="match-matrix-body">
+                    <tr><td colspan="7" class="text-center">No match evaluations run yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 5: PIPELINE KANBAN ================= -->
+    <section class="tab-view" id="view-pipeline" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">📋 Candidate Pipeline Kanban</h2>
+          <p class="subtitle">Track candidates across recruitment stages from initial application to offer and hired.</p>
+        </div>
+        <div class="view-actions">
+          <select id="pipeline-job-filter" class="custom-select">
+            <option value="">All Requisitions</option>
+          </select>
+          <button type="button" class="btn-secondary" id="btn-refresh-pipeline">
+            <span>🔄</span> Refresh Board
+          </button>
+        </div>
+      </div>
+
+      <div class="kanban-board" id="kanban-board">
+        <!-- Columns rendered dynamically: APPLIED, SCREENED, ASSESSMENT, INTERVIEW, OFFER, HIRED -->
+      </div>
+    </section>
+
+    <!-- ================= VIEW 6: CANDIDATE COMPARISON ================= -->
+    <section class="tab-view" id="view-compare" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">⚖️ Side-by-Side Candidate Comparison</h2>
+          <p class="subtitle">Compare 2 to 4 candidates across multi-dimensional technical metrics, claim-vs-evidence scores, and winner recommendation.</p>
+        </div>
+      </div>
+
+      <div class="card compare-selector-card">
+        <div class="card-header">
+          <h3>Select Candidates to Compare</h3>
+          <button type="button" class="btn-primary" id="btn-execute-compare">
+            <span>⚖️</span> Run Multi-Dimensional Comparison
+          </button>
+        </div>
+        <div class="compare-candidates-picker" id="compare-candidates-list">
+          <div class="empty-state">Loading candidates from database...</div>
+        </div>
+      </div>
+
+      <!-- Winner Verdict Banner -->
+      <div class="card winner-banner-card" id="compare-winner-card" style="display: none;">
+        <div class="winner-badge">🏆 TOP RECOMMENDED CANDIDATE</div>
+        <h2 id="compare-winner-name">Aarav Sharma</h2>
+        <p class="winner-rationale" id="compare-winner-rationale">Candidate possesses superior production code depth, higher test coverage, and clean CI/CD hygiene.</p>
+      </div>
+
+      <!-- Comparison Metrics Grid -->
+      <div class="compare-results-container" id="compare-results-container" style="display: none;">
+        <div class="card">
+          <div class="card-header">
+            <h3>Technical Dimensions Matrix</h3>
+          </div>
+          <div class="compare-table-wrap">
+            <table class="data-table compare-table" id="compare-metrics-table">
+              <thead id="compare-table-head"></thead>
+              <tbody id="compare-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 7: EVIDENCE GRAPH ================= -->
+    <section class="tab-view" id="view-graph" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">🕸️ Candidate Evidence DAG Graph</h2>
+          <p class="subtitle">Direct visualization of Claim ➔ Skill ➔ Project ➔ Repo ➔ Code Evidence ➔ Verdict provenance graph.</p>
+        </div>
+        <div class="view-actions">
+          <select id="select-graph-audit" class="custom-select">
+            <option value="">Select Candidate Audit...</option>
+          </select>
+          <button type="button" class="btn-secondary" id="btn-load-graph">
+            <span>🕸️</span> Load Evidence Graph
+          </button>
+        </div>
+      </div>
+
+      <div class="card graph-canvas-card">
+        <div class="graph-legend">
+          <span class="legend-item"><span class="legend-dot dot-claim"></span> Resume Claim</span>
+          <span class="legend-item"><span class="legend-dot dot-skill"></span> Verified Skill</span>
+          <span class="legend-item"><span class="legend-dot dot-repo"></span> GitHub Repository</span>
+          <span class="legend-item"><span class="legend-dot dot-evidence"></span> AST / Code Proof</span>
+          <span class="legend-item"><span class="legend-dot dot-verdict"></span> Final Verdict</span>
+        </div>
+
+        <div class="graph-viewport" id="graph-viewport">
+          <div class="placeholder-card" id="graph-placeholder">
+            <div class="placeholder-icon">🕸️</div>
+            <h3>No Evidence Graph Loaded</h3>
+            <p>Select a candidate audit above to visualize the complete cryptographic proof trail from resume claims down to syntax AST and test assertions.</p>
+          </div>
+          <div id="graph-content" style="display: none;">
+            <div class="dag-layers-container" id="dag-layers-container"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 8: TECHNICAL ASSESSMENTS ================= -->
+    <section class="tab-view" id="view-assessments" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">🧪 Automatic Technical Assessments</h2>
+          <p class="subtitle">Generate custom 10, 20, 30, or 60-minute technical problem sets tailored to role requirements and candidate stack.</p>
+        </div>
+      </div>
+
+      <div class="assessment-layout">
+        <!-- Left: Assessment Generator Form -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Generate Custom Assessment</h3>
+          </div>
+          <form id="assessment-gen-form">
+            <div class="form-group">
+              <label>Candidate</label>
+              <select id="assess-candidate-select" class="custom-select" required>
+                <option value="">Select candidate...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Target Role or Topic</label>
+              <input type="text" id="assess-topic" placeholder="e.g. Distributed Systems Backend or Python / FastAPI" required value="Python Backend Engineer">
+            </div>
+            <div class="form-row" style="display: flex; gap: 12px;">
+              <div class="form-group" style="flex: 1;">
+                <label>Difficulty</label>
+                <select id="assess-difficulty" class="custom-select">
+                  <option value="junior">Junior</option>
+                  <option value="mid">Mid-Level</option>
+                  <option value="senior" selected>Senior</option>
+                  <option value="lead">Lead / Staff</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Duration</label>
+                <select id="assess-duration" class="custom-select">
+                  <option value="10">10 Minutes (Quick Check)</option>
+                  <option value="20" selected>20 Minutes (Standard)</option>
+                  <option value="30">30 Minutes (In-Depth)</option>
+                  <option value="60">60 Minutes (Architecture)</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="btn-primary" id="btn-generate-assessment">
+              <span>⚡</span> Generate Tailored Assessment
+            </button>
+          </form>
+        </div>
+
+        <!-- Right: Active Assessment & Evaluation Workspace -->
+        <div class="card" id="assessment-workspace-card">
+          <div class="placeholder-card" id="assess-placeholder">
+            <div class="placeholder-icon">🧪</div>
+            <h3>Ready for Assessment</h3>
+            <p>Generate a customized technical problem set on the left to review problems, enter responses, and evaluate with automated rubric grading.</p>
+          </div>
+
+          <div id="assess-active-content" style="display: none;">
+            <div class="assess-header-row">
+              <div>
+                <h3 id="assess-title">Python Backend Assessment</h3>
+                <span class="badge-pill" id="assess-duration-pill">20 mins</span>
+                <span class="badge-pill" id="assess-status-pill">Pending</span>
+              </div>
+              <div id="assess-score-badge" style="display: none;" class="rec-badge">85/100</div>
+            </div>
+
+            <div class="assess-problem-box" id="assess-problem-box"></div>
+
+            <div class="form-group" style="margin-top: 16px;">
+              <label>Candidate Code / Solution Submission:</label>
+              <textarea id="assess-solution-input" rows="8" class="code-editor-textarea" placeholder="Paste candidate implementation code or architectural answer here..."></textarea>
+            </div>
+
+            <button type="button" class="btn-primary" id="btn-submit-assessment">
+              <span>🤖</span> Submit & Grade with AI Rubric
+            </button>
+
+            <!-- Rubric Evaluation Results -->
+            <div class="rubric-result-box" id="assess-rubric-box" style="display: none;">
+              <h4>Rubric Evaluation Report</h4>
+              <div id="assess-rubric-breakdown"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 9: AI INTERVIEWER ================= -->
+    <section class="tab-view" id="view-interviews" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">🎙️ AI Technical Interviewer</h2>
+          <p class="subtitle">Multi-turn adaptive technical interview with dynamic follow-up probing grounded in candidate's verified GitHub projects.</p>
+        </div>
+      </div>
+
+      <div class="interview-layout">
+        <!-- Setup / Status Column -->
+        <div class="card interview-sidebar">
+          <div class="card-header">
+            <h3>Interview Session</h3>
+          </div>
+          <div class="form-group">
+            <label>Candidate</label>
+            <select id="interview-candidate-select" class="custom-select">
+              <option value="">Select candidate...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Focus Domain</label>
+            <input type="text" id="interview-focus-role" placeholder="e.g. Distributed Systems & High-Throughput APIs" value="Distributed Systems & Concurrency">
+          </div>
+          <button type="button" class="btn-primary" id="btn-start-interview">
+            <span>🎙️</span> Start Interview Session
+          </button>
+
+          <hr class="divider" style="margin: 20px 0; border: none; border-top: 1px solid var(--border-subtle);">
+
+          <div class="interview-status-panel" id="interview-status-panel">
+            <div class="metric-item" style="align-items: flex-start; margin-bottom: 12px;">
+              <span class="metric-label">Session Status</span>
+              <span class="metric-val" id="interview-state-val">IDLE</span>
+            </div>
+            <div class="metric-item" style="align-items: flex-start; margin-bottom: 12px;">
+              <span class="metric-label">Turns Completed</span>
+              <span class="metric-val" id="interview-turns-val">0</span>
+            </div>
+            <div class="metric-item" style="align-items: flex-start;">
+              <span class="metric-label">Current Technical Rating</span>
+              <span class="metric-val" id="interview-rating-val">-- / 100</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Console Column -->
+        <div class="card interview-chat-card">
+          <div class="chat-messages" id="interview-messages">
+            <div class="chat-bubble bot">
+              <div class="chat-author">🤖 AI Technical Interviewer</div>
+              <p>Welcome. Start an interview session on the left to begin dynamic technical probing grounded in the candidate's actual source code repositories.</p>
+            </div>
+          </div>
+
+          <div class="chat-input-row">
+            <textarea id="interview-answer-input" rows="2" placeholder="Type candidate's verbal response or technical explanation..." disabled></textarea>
+            <button type="button" class="btn-primary" id="btn-send-interview-answer" disabled>
+              <span>Probe ➔</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 10: RECRUITMENT ANALYTICS ================= -->
+    <section class="tab-view" id="view-analytics" style="display: none;">
+      <div class="view-header-row">
+        <div>
+          <h2 class="view-title">📊 Hiring Analytics & Automation ROI</h2>
+          <p class="subtitle">Real-time metrics on screening throughput, recruitment funnel conversion, and engineer hours saved.</p>
+        </div>
+        <div class="view-actions">
+          <button type="button" class="btn-secondary" id="btn-refresh-analytics">
+            <span>🔄</span> Refresh Telemetry
+          </button>
+        </div>
+      </div>
+
+      <!-- ROI Summary Metrics Grid -->
+      <div class="analytics-metrics-grid">
+        <div class="card metric-card">
+          <div class="metric-icon">⏱️</div>
+          <div class="metric-number" id="roi-hours-saved">0 hrs</div>
+          <div class="metric-title">Engineering Hours Saved</div>
+          <div class="metric-sub">Based on 45m manual GitHub & resume review per applicant</div>
+        </div>
+        <div class="card metric-card">
+          <div class="metric-icon">💰</div>
+          <div class="metric-number" id="roi-cost-saved">$0</div>
+          <div class="metric-title">Estimated Cost Savings</div>
+          <div class="metric-sub">At industry standard $100/hr technical interviewer rate</div>
+        </div>
+        <div class="card metric-card">
+          <div class="metric-icon">⚡</div>
+          <div class="metric-number" id="roi-avg-speed">&lt; 2.5s</div>
+          <div class="metric-title">Average Time per Audit</div>
+          <div class="metric-sub">With SmartCache AST verification</div>
+        </div>
+        <div class="card metric-card">
+          <div class="metric-icon">🎯</div>
+          <div class="metric-number" id="roi-concordance">96.8%</div>
+          <div class="metric-title">AI-Recruiter Concordance</div>
+          <div class="metric-sub">Consensus agreement with human hiring decisions</div>
+        </div>
+      </div>
+
+      <!-- Funnel Stages & Skills Analysis Grid -->
+      <div class="analytics-charts-grid">
+        <div class="card">
+          <div class="card-header">
+            <h3>Recruitment Funnel Conversion</h3>
+          </div>
+          <div class="funnel-container" id="analytics-funnel-container">
+            <div class="empty-state">Loading recruitment pipeline funnel data...</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Top Verified Candidate Skills</h3>
+          </div>
+          <div class="skills-distribution-list" id="analytics-skills-list">
+            <div class="empty-state">Loading skill verification telemetry...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recruiter Copilot Slide-Over Drawer -->
+    <div class="copilot-drawer-overlay" id="copilot-drawer-overlay" style="display: none;">
+      <div class="copilot-drawer">
+        <div class="copilot-drawer-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="copilot-avatar">🤖</div>
+            <div>
+              <h3>Recruiter Copilot</h3>
+              <span class="badge-pill" style="margin-left: 0; font-size: 10px;">Grounded in Tenant DB</span>
+            </div>
+          </div>
+          <button type="button" class="modal-close" id="btn-close-copilot">✕</button>
+        </div>
+
+        <div class="copilot-quick-prompts">
+          <button type="button" class="chip copilot-chip" data-query="Who are our top candidates for backend engineering?">🏆 Top backend candidates?</button>
+          <button type="button" class="chip copilot-chip" data-query="Compare Aarav Sharma and Elena Rostova">⚖️ Compare Aarav vs Elena</button>
+          <button type="button" class="chip copilot-chip" data-query="What are the most common red flags found?">🚩 Common red flags?</button>
+        </div>
+
+        <div class="copilot-chat-body" id="copilot-messages">
+          <div class="chat-bubble bot">
+            <div class="chat-author">🤖 Recruiter Copilot</div>
+            <p>Hello! I am your AI recruitment assistant, grounded directly in your candidate audits, job requisitions, and GitHub evidence. Ask me anything about your talent pool.</p>
+          </div>
+        </div>
+
+        <div class="copilot-chat-input-area">
+          <div class="copilot-input-wrapper">
+            <input type="text" id="copilot-query-input" placeholder="Ask about candidates, match scores, code quality...">
+            <button type="button" class="btn-primary" id="btn-send-copilot">Ask</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Post Job Opening Modal -->
+    <div class="modal-overlay" id="job-create-modal" style="display: none;">
+      <div class="modal-content" style="max-width: 650px;">
+        <div class="modal-header">
+          <h3>Create New Job Requisition</h3>
+          <span class="modal-close" id="btn-close-job-modal">✕</span>
+        </div>
+        <form id="form-create-job">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Role Title</label>
+              <input type="text" id="new-job-title" placeholder="e.g. Senior Backend Engineer (Python/Go)" required>
+            </div>
+            <div class="form-row" style="display: flex; gap: 12px;">
+              <div class="form-group" style="flex: 1;">
+                <label>Department</label>
+                <input type="text" id="new-job-dept" placeholder="e.g. Platform Engineering" value="Engineering">
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Seniority Level</label>
+                <select id="new-job-level" class="custom-select">
+                  <option value="Junior">Junior</option>
+                  <option value="Mid">Mid-Level</option>
+                  <option value="Senior" selected>Senior</option>
+                  <option value="Staff">Staff</option>
+                  <option value="Principal">Principal</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Min Years Exp</label>
+                <input type="number" id="new-job-exp" value="4" min="0" max="25">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Raw Job Description</label>
+              <textarea id="new-job-desc" rows="6" placeholder="Paste the job requirements, responsibilities, and required stack..." required></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="btn-cancel-job-modal">Cancel</button>
+            <button type="submit" class="btn-primary" id="btn-save-job">Save & Extract Requirements</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Email Draft Preview Modal -->
+    <div class="modal-overlay" id="draft-modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-draft-title">Auto-Drafted Response</h3>
+          <span class="modal-close" id="btn-close-modal">✕</span>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Recipient:</label>
+            <span id="modal-recipient" style="font-family: var(--font-mono); color: #a5b4fc;">candidate@example.com</span>
+          </div>
+          <div class="form-group">
+            <label>Subject Line:</label>
+            <input type="text" id="modal-subject" readonly>
+          </div>
+          <div class="form-group">
+            <label>Message Content (Ready to Send):</label>
+            <textarea id="modal-body" rows="9" class="modal-textarea" readonly></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btn-copy-draft">Copy Draft</button>
+          <button type="button" class="btn-primary" id="btn-ok-draft">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commercial B2B Pricing Modal -->
+    <div class="modal-overlay" id="pricing-modal" style="display: none;">
+      <div class="modal-content pricing-modal-content">
+        <div class="modal-header">
+          <div>
+            <span class="badge-pill" style="margin-left: 0; margin-bottom: 6px; display: inline-block;">SaaS Pricing Matrix</span>
+            <h3 style="font-size: 22px; font-weight: 800;">Commercial Plans & Subscription Tiers</h3>
+          </div>
+          <span class="modal-close" id="btn-close-pricing">✕</span>
+        </div>
+        <div class="pricing-grid">
+          <!-- Tier 1: Starter -->
+          <div class="pricing-card">
+            <div class="tier-name">Starter</div>
+            <div class="tier-price">₹5,000 <span>/ mo</span></div>
+            <div class="tier-usd">$59 / month billed monthly</div>
+            <p class="tier-desc">Ideal for early-stage startups screening 10–50 engineering applicants per month.</p>
+            <ul class="tier-features">
+              <li>✓ <strong>50 Resumes</strong> audited / month</li>
+              <li>✓ GitHub claim-vs-evidence auditor</li>
+              <li>✓ Sub-2s SmartCache speed</li>
+              <li>✓ Inbound Forwarding Alias (`@auditagent.ai`)</li>
+              <li>✓ CSV batch export</li>
+              <li class="dim-feat">✕ Direct Gmail / Outlook IMAP sync</li>
+              <li class="dim-feat">✕ Auto-drafting with Calendly</li>
+              <li class="dim-feat">✕ Recruiter Slack & WhatsApp digests</li>
+            </ul>
+            <button class="btn-tier" onclick="alert('Starter Plan selected. Invoicing generated at ₹5,000/mo.')">Select Starter</button>
+          </div>
+
+          <!-- Tier 2: Growth (Featured) -->
+          <div class="pricing-card featured">
+            <div class="featured-ribbon">MOST POPULAR</div>
+            <div class="tier-name">Growth</div>
+            <div class="tier-price">₹15,000 <span>/ mo</span></div>
+            <div class="tier-usd">$179 / month billed monthly</div>
+            <p class="tier-desc">Designed for scaling hiring teams and recruitment agencies screening up to 250 resumes.</p>
+            <ul class="tier-features">
+              <li>✓ <strong>250 Resumes</strong> audited / month</li>
+              <li>✓ <strong>Direct Gmail / Outlook IMAP Sync</strong></li>
+              <li>✓ <strong>Auto-Drafted Replies</strong> + Calendly link</li>
+              <li>✓ <strong>Daily 9:00 AM Slack & WhatsApp Digests</strong></li>
+              <li>✓ Parallel Batch Screener (Semaphore concurrency)</li>
+              <li>✓ Multi-Model Consensus Verification</li>
+              <li class="dim-feat">✕ Custom ATS webhooks</li>
+              <li class="dim-feat">✕ Dedicated Account Manager & SLA</li>
+            </ul>
+            <button class="btn-tier featured-btn" onclick="alert('Growth Plan selected. Upgrading team to ₹15,000/mo.')">Start Growth Plan</button>
+          </div>
+
+          <!-- Tier 3: Enterprise -->
+          <div class="pricing-card">
+            <div class="tier-name">Enterprise</div>
+            <div class="tier-price">₹35,000 <span>/ mo</span></div>
+            <div class="tier-usd">$419 / month billed monthly</div>
+            <p class="tier-desc">Full autonomous screening automation for large enterprises & high-volume engineering teams.</p>
+            <ul class="tier-features">
+              <li>✓ <strong>Unlimited Resumes</strong> audited / month</li>
+              <li>✓ Multi-Inbox Direct Sync & Custom Aliases</li>
+              <li>✓ Real-time ATS Webhook Integration (Greenhouse, Lever)</li>
+              <li>✓ Custom Code Check Rules & Scoring Weights</li>
+              <li>✓ Multi-Model Consensus Engine with Outlier Detection</li>
+              <li>✓ Dedicated SLA & 24/7 Priority Support</li>
+              <li>✓ Custom NDA & Data Retention Policies</li>
+            </ul>
+            <button class="btn-tier" onclick="alert('Enterprise Plan inquiry submitted. Our sales team will reach out.')">Contact Enterprise</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
