@@ -29,20 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // ================= TABS NAVIGATION =================
 function initTabs() {
   const tabs = [
-    { btnId: 'tab-single-btn', viewId: 'view-single', onActive: null },
-    { btnId: 'tab-batch-btn', viewId: 'view-batch', onActive: null },
-    { btnId: 'tab-email-btn', viewId: 'view-email', onActive: null },
-    { btnId: 'tab-jobs-btn', viewId: 'view-jobs', onActive: () => loadJobsView() },
-    { btnId: 'tab-pipeline-btn', viewId: 'view-pipeline', onActive: () => loadPipelineView() },
-    { btnId: 'tab-compare-btn', viewId: 'view-compare', onActive: () => loadCompareCandidates() },
-    { btnId: 'tab-graph-btn', viewId: 'view-graph', onActive: () => loadGraphAuditsList() },
-    { btnId: 'tab-assessments-btn', viewId: 'view-assessments', onActive: () => loadAssessmentCandidates() },
-    { btnId: 'tab-interviews-btn', viewId: 'view-interviews', onActive: () => loadInterviewCandidates() },
-    { btnId: 'tab-analytics-btn', viewId: 'view-analytics', onActive: () => loadAnalytics() }
+    { btnId: 'tab-single-btn', viewId: 'view-single', title: 'Single Candidate Audit', onActive: null },
+    { btnId: 'tab-batch-btn', viewId: 'view-batch', title: 'Batch Screening Leaderboard', onActive: null },
+    { btnId: 'tab-email-btn', viewId: 'view-email', title: 'Email Ingestion Hub', onActive: null },
+    { btnId: 'tab-jobs-btn', viewId: 'view-jobs', title: 'Job Openings & Candidate Fit', onActive: () => loadJobsView() },
+    { btnId: 'tab-pipeline-btn', viewId: 'view-pipeline', title: 'Recruitment Kanban Pipeline', onActive: () => loadPipelineView() },
+    { btnId: 'tab-compare-btn', viewId: 'view-compare', title: 'Candidate Side-by-Side Compare', onActive: () => loadCompareCandidates() },
+    { btnId: 'tab-graph-btn', viewId: 'view-graph', title: 'Candidate Evidence DAG', onActive: () => loadGraphAuditsList() },
+    { btnId: 'tab-assessments-btn', viewId: 'view-assessments', title: 'Technical Coding Challenges', onActive: () => loadAssessmentCandidates() },
+    { btnId: 'tab-interviews-btn', viewId: 'view-interviews', title: 'AI Technical Interviewer', onActive: () => loadInterviewCandidates() },
+    { btnId: 'tab-analytics-btn', viewId: 'view-analytics', title: 'ROI & Funnel Analytics', onActive: () => loadAnalytics() }
   ];
 
   const allBtns = tabs.map(t => document.getElementById(t.btnId)).filter(Boolean);
   const allViews = tabs.map(t => document.getElementById(t.viewId)).filter(Boolean);
+  const topbarTitle = document.getElementById('topbar-current-view');
 
   tabs.forEach(tab => {
     const btn = document.getElementById(tab.btnId);
@@ -55,6 +56,10 @@ function initTabs() {
 
       btn.classList.add('active');
       view.style.display = 'block';
+
+      if (topbarTitle && tab.title) {
+        topbarTitle.textContent = tab.title;
+      }
 
       if (tab.onActive) {
         tab.onActive();

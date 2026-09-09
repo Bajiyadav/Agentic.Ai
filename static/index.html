@@ -15,71 +15,125 @@
   <div class="ambient-glow glow-2"></div>
   <div class="ambient-glow glow-3"></div>
 
-  <div class="app-container">
-    <!-- Navbar -->
-    <header class="navbar">
-      <div class="logo-area">
-        <div class="logo-icon">⚡</div>
-        <div>
-          <span class="logo-title">AuditAgent<span class="highlight">.ai</span></span>
-          <span class="badge-pill">Enterprise Screener</span>
+  <div class="app-workspace">
+    <!-- Left Navigation Sidebar -->
+    <aside class="workspace-sidebar">
+      <div class="sidebar-header">
+        <div class="logo-area">
+          <div class="logo-icon">⚡</div>
+          <div class="logo-text">
+            <span class="logo-title">AuditAgent<span class="highlight">.ai</span></span>
+            <span class="badge-pill">Enterprise AI</span>
+          </div>
+        </div>
+        <div class="workspace-tenant-pill">
+          <span class="tenant-icon">🏢</span>
+          <span class="tenant-name">Acme Talent Corp</span>
+          <span class="tenant-badge">Pro</span>
         </div>
       </div>
-      <div class="nav-metrics">
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Screening & Ingestion</div>
+        <button class="tab-btn active" id="tab-single-btn">
+          <span class="tab-icon">⚡</span>
+          <span class="tab-label">Single Audit</span>
+        </button>
+        <button class="tab-btn" id="tab-batch-btn">
+          <span class="tab-icon">📥</span>
+          <span class="tab-label">Batch Screener</span>
+          <span class="tab-badge">Parallel</span>
+        </button>
+        <button class="tab-btn" id="tab-email-btn">
+          <span class="tab-icon">✉️</span>
+          <span class="tab-label">Email Ingestion</span>
+          <span class="tab-badge-accent">Enterprise</span>
+        </button>
+
+        <div class="nav-section-title">Hiring Pipeline</div>
+        <button class="tab-btn" id="tab-jobs-btn">
+          <span class="tab-icon">🎯</span>
+          <span class="tab-label">Jobs & Matching</span>
+        </button>
+        <button class="tab-btn" id="tab-pipeline-btn">
+          <span class="tab-icon">📋</span>
+          <span class="tab-label">Kanban Pipeline</span>
+        </button>
+        <button class="tab-btn" id="tab-compare-btn">
+          <span class="tab-icon">⚖️</span>
+          <span class="tab-label">Candidate Compare</span>
+        </button>
+
+        <div class="nav-section-title">Technical Proofs</div>
+        <button class="tab-btn" id="tab-graph-btn">
+          <span class="tab-icon">🕸️</span>
+          <span class="tab-label">Evidence Graph</span>
+        </button>
+        <button class="tab-btn" id="tab-assessments-btn">
+          <span class="tab-icon">🧪</span>
+          <span class="tab-label">Code Challenges</span>
+        </button>
+        <button class="tab-btn" id="tab-interviews-btn">
+          <span class="tab-icon">🎙️</span>
+          <span class="tab-label">AI Interviewer</span>
+        </button>
+
+        <div class="nav-section-title">Intelligence</div>
+        <button class="tab-btn" id="tab-analytics-btn">
+          <span class="tab-icon">📊</span>
+          <span class="tab-label">ROI & Funnel</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
         <button type="button" class="btn-copilot" id="btn-open-copilot">
-          <span>🤖</span> Recruiter Copilot
+          <span class="copilot-glow-icon">✨</span>
+          <div class="copilot-btn-text">
+            <span class="copilot-main-text">Recruiter Copilot</span>
+            <span class="copilot-sub-text">AI Talent Assistant</span>
+          </div>
         </button>
         <button type="button" class="btn-pricing" id="btn-open-pricing">
-          <span>💎</span> Plans & Pricing
+          <span>💎</span> Plans & Credits
         </button>
-        <div class="metric-item">
-          <span class="metric-label">Cache Hit Rate</span>
-          <span class="metric-val" id="cache-hit-rate">--%</span>
-        </div>
-        <div class="metric-item">
-          <span class="metric-label">API Status</span>
-          <span class="status-indicator online" id="api-status">
-            <span class="dot"></span> Online
-          </span>
+        <div class="sidebar-status-box">
+          <div class="status-indicator online" id="api-status">
+            <span class="dot"></span> Engine Online
+          </div>
+          <div class="status-stat" title="Cache hit rate">
+            <span class="stat-label">Cache</span>
+            <span class="metric-val" id="cache-hit-rate">--%</span>
+          </div>
         </div>
       </div>
-    </header>
+    </aside>
 
-    <!-- App Navigation Tabs -->
-    <nav class="app-tabs">
-      <button class="tab-btn active" id="tab-single-btn">
-        <span>⚡</span> Single Audit
-      </button>
-      <button class="tab-btn" id="tab-batch-btn">
-        <span>📥</span> Batch Leaderboard
-        <span class="tab-badge">Parallel</span>
-      </button>
-      <button class="tab-btn" id="tab-email-btn">
-        <span>✉️</span> Email Ingestion Hub
-        <span class="tab-badge-accent">Enterprise</span>
-      </button>
-      <button class="tab-btn" id="tab-jobs-btn">
-        <span>🎯</span> Jobs & Matching
-      </button>
-      <button class="tab-btn" id="tab-pipeline-btn">
-        <span>📋</span> Kanban Pipeline
-      </button>
-      <button class="tab-btn" id="tab-compare-btn">
-        <span>⚖️</span> Compare
-      </button>
-      <button class="tab-btn" id="tab-graph-btn">
-        <span>🕸️</span> Evidence Graph
-      </button>
-      <button class="tab-btn" id="tab-assessments-btn">
-        <span>🧪</span> Assessments
-      </button>
-      <button class="tab-btn" id="tab-interviews-btn">
-        <span>🎙️</span> AI Interviewer
-      </button>
-      <button class="tab-btn" id="tab-analytics-btn">
-        <span>📊</span> Analytics
-      </button>
-    </nav>
+    <!-- Main Content Workspace Area -->
+    <div class="workspace-main">
+      <header class="workspace-topbar">
+        <div class="topbar-left">
+          <div class="topbar-view-indicator">
+            <span class="topbar-view-icon">📂</span>
+            <span class="topbar-view-title" id="topbar-current-view">Single Candidate Audit</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-metric-pill">
+            <span class="pill-label">Screen Speed</span>
+            <span class="pill-value">&lt; 2.5s</span>
+          </div>
+          <div class="topbar-metric-pill">
+            <span class="pill-label">Concordance</span>
+            <span class="pill-value">96.8%</span>
+          </div>
+          <button type="button" class="btn-topbar-action" onclick="document.getElementById('tab-single-btn').click()">
+            <span>⚡</span> + New Audit
+          </button>
+        </div>
+      </header>
+
+      <div class="workspace-views">
+
 
     <!-- ================= VIEW 1: SINGLE CANDIDATE AUDIT ================= -->
     <section class="tab-view" id="view-single">
@@ -1084,9 +1138,12 @@
         </div>
       </div>
     </section>
+      </div> <!-- /.workspace-views -->
+    </div> <!-- /.workspace-main -->
+  </div> <!-- /.app-workspace -->
 
-    <!-- Recruiter Copilot Slide-Over Drawer -->
-    <div class="copilot-drawer-overlay" id="copilot-drawer-overlay" style="display: none;">
+  <!-- Recruiter Copilot Slide-Over Drawer -->
+  <div class="copilot-drawer-overlay" id="copilot-drawer-overlay" style="display: none;">
       <div class="copilot-drawer">
         <div class="copilot-drawer-header">
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -1265,7 +1322,6 @@
         </div>
       </div>
     </div>
-  </div>
 
   <script src="/static/app.js"></script>
 </body>

@@ -50,3 +50,5 @@ mock_inbox/
 .vscode/
 *.swp
 *.swo
+.vercel
+.env*
