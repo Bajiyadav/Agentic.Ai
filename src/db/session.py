@@ -4,15 +4,31 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import declarative_base
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://bajiyadav@localhost:5432/auditagent")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+asyncpg://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 SYNC_DATABASE_URL = os.getenv("SYNC_DATABASE_URL", "postgresql+psycopg2://bajiyadav@localhost:5432/auditagent")
+if SYNC_DATABASE_URL.startswith("postgres://"):
+    SYNC_DATABASE_URL = SYNC_DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+elif SYNC_DATABASE_URL.startswith("postgresql://") and not SYNC_DATABASE_URL.startswith("postgresql+psycopg2://"):
+    SYNC_DATABASE_URL = SYNC_DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+is_serverless = os.getenv("VERCEL") == "1"
+engine_kwargs = {
+    "echo": False,
+    "future": True,
+    "pool_pre_ping": True,
+}
+if is_serverless:
+    engine_kwargs.update({"pool_size": 2, "max_overflow": 3})
+else:
+    engine_kwargs.update({"pool_size": 15, "max_overflow": 10})
 
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,
-    future=True,
-    pool_size=15,
-    max_overflow=10,
-    pool_pre_ping=True
+    **engine_kwargs
 )
 
 AsyncSessionLocal = async_sessionmaker(
