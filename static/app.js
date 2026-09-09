@@ -1315,7 +1315,7 @@ function selectJob(jobId) {
   (activeSelectedJob.required_skills || []).forEach(s => {
     const chip = document.createElement('span');
     chip.className = 'chip';
-    chip.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+    chip.style.borderColor = 'rgba(255, 107, 53, 0.45)';
     chip.textContent = s;
     skillsContainer.appendChild(chip);
   });
@@ -2062,7 +2062,7 @@ async function loadAnalytics() {
         row.innerHTML = `
           <div class="funnel-stage-name" style="width: 140px;">${s.skill}</div>
           <div class="funnel-bar-track">
-            <div class="funnel-bar-fill" style="width: ${s.count}%; background: linear-gradient(90deg, #10b981, #06b6d4);"></div>
+            <div class="funnel-bar-fill" style="width: ${s.count}%; background: linear-gradient(90deg, #ff6b35, #f59e0b);"></div>
           </div>
           <div class="funnel-stage-val">${s.count}%</div>
         `;
