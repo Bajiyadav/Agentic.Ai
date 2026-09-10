@@ -143,67 +143,81 @@ async def get_tenant_or_demo_context(
         except Exception:
             pass
 
-    # Provision or retrieve standard Demo Organization
-    demo_slug = "demo-workspace"
-    stmt = select(Organization).where(Organization.slug == demo_slug)
-    res = await db.execute(stmt)
-    org = res.scalar_one_or_none()
+    try:
+        # Provision or retrieve standard Demo Organization
+        demo_slug = "demo-workspace"
+        stmt = select(Organization).where(Organization.slug == demo_slug)
+        res = await db.execute(stmt)
+        org = res.scalar_one_or_none()
 
-    if not org:
-        org = Organization(
-            name="Demo Workspace",
-            slug=demo_slug,
+        if not org:
+            org = Organization(
+                name="Demo Workspace",
+                slug=demo_slug,
+                plan_tier="growth",
+                monthly_resume_limit=500,
+                monthly_resumes_used=0,
+                is_active=True
+            )
+            db.add(org)
+            await db.flush()
+
+            # Create demo user
+            from src.security import hash_password
+            demo_user = User(
+                email="demo@auditagent.ai",
+                hashed_password=hash_password("DemoAudit123!"),
+                full_name="Demo Recruiter",
+                is_active=True
+            )
+            db.add(demo_user)
+            await db.flush()
+
+            # Membership
+            membership = Membership(
+                user_id=demo_user.id,
+                organization_id=org.id,
+                role="owner"
+            )
+            db.add(membership)
+            await db.commit()
+            await db.refresh(org)
+            user_id = demo_user.id
+            user_email = demo_user.email
+        else:
+            # Find membership
+            m_stmt = select(Membership, User).join(User, Membership.user_id == User.id).where(Membership.organization_id == org.id)
+            m_res = await db.execute(m_stmt)
+            m_row = m_res.first()
+            if m_row:
+                user_id = m_row[0].user_id
+                user_email = m_row[1].email
+            else:
+                user_id = uuid.uuid4()
+                user_email = "demo@auditagent.ai"
+
+        return TenantContext(
+            organization_id=org.id,
+            organization_name=org.name,
+            organization_slug=org.slug,
+            plan_tier=org.plan_tier,
+            monthly_resume_limit=org.monthly_resume_limit,
+            monthly_resumes_used=org.monthly_resumes_used,
+            user_id=user_id,
+            user_email=user_email,
+            role="owner"
+        )
+    except Exception:
+        # Graceful fallback when database is offline or not provisioned (e.g. serverless without remote DB)
+        return TenantContext(
+            organization_id=uuid.UUID("897c74c7-b22b-4e78-8a64-a8c72ba10461"),
+            organization_name="Demo Workspace",
+            organization_slug="demo-workspace",
             plan_tier="growth",
             monthly_resume_limit=500,
             monthly_resumes_used=0,
-            is_active=True
-        )
-        db.add(org)
-        await db.flush()
-
-        # Create demo user
-        from src.security import hash_password
-        demo_user = User(
-            email="demo@auditagent.ai",
-            hashed_password=hash_password("DemoAudit123!"),
-            full_name="Demo Recruiter",
-            is_active=True
-        )
-        db.add(demo_user)
-        await db.flush()
-
-        # Membership
-        membership = Membership(
-            user_id=demo_user.id,
-            organization_id=org.id,
+            user_id=uuid.UUID("d0a51cb3-6ca2-4886-905c-3725b74c0b43"),
+            user_email="demo@auditagent.ai",
             role="owner"
         )
-        db.add(membership)
-        await db.commit()
-        await db.refresh(org)
-        user_id = demo_user.id
-        user_email = demo_user.email
-    else:
-        # Find membership
-        m_stmt = select(Membership, User).join(User, Membership.user_id == User.id).where(Membership.organization_id == org.id)
-        m_res = await db.execute(m_stmt)
-        m_row = m_res.first()
-        if m_row:
-            user_id = m_row[0].user_id
-            user_email = m_row[1].email
-        else:
-            user_id = uuid.uuid4()
-            user_email = "demo@auditagent.ai"
-
-    return TenantContext(
-        organization_id=org.id,
-        organization_name=org.name,
-        organization_slug=org.slug,
-        plan_tier=org.plan_tier,
-        monthly_resume_limit=org.monthly_resume_limit,
-        monthly_resumes_used=org.monthly_resumes_used,
-        user_id=user_id,
-        user_email=user_email,
-        role="owner"
-    )
 

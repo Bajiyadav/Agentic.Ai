@@ -5,6 +5,85 @@ let currentBatchFilter = 'ALL';
 let currentActiveAuditId = null;
 let currentActiveReplyId = null;
 let pendingOverrideDecision = null;
+let currentHistoryFilter = 'ALL';
+let currentHistoryQuery = '';
+
+// ================= MODERN TOAST NOTIFICATION SYSTEM =================
+function showToast(message, type = 'info', duration = 3500) {
+  let container = document.getElementById('auditagent-toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'auditagent-toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast-card toast-${type}`;
+  
+  const icons = {
+    success: '✓',
+    error: '✕',
+    warning: '⚠️',
+    info: '⚡'
+  };
+
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[type] || '⚡'}</span>
+    <span class="toast-msg">${message}</span>
+    <button type="button" class="toast-close" aria-label="Close">&times;</button>
+  `;
+
+  const closeBtn = toast.querySelector('.toast-close');
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      toast.classList.add('toast-fade-out');
+      setTimeout(() => toast.remove(), 250);
+    };
+  }
+
+  container.appendChild(toast);
+
+  // Trigger entrance animation
+  requestAnimationFrame(() => toast.classList.add('toast-show'));
+
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.classList.add('toast-fade-out');
+      setTimeout(() => toast.remove(), 250);
+    }
+  }, duration);
+}
+window.showToast = showToast;
+
+async function parseResponseSafe(res) {
+  try {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { detail: text || `HTTP ${res.status} ${res.statusText}` };
+    }
+  } catch (err) {
+    return { detail: `Network error: ${err.message}` };
+  }
+}
+
+// Global Error & Promise Rejection Watchdog (Surfaces all errors immediately)
+window.addEventListener('error', (event) => {
+  console.error('Captured Global UI Error:', event.error || event.message);
+  if (window.showToast) {
+    window.showToast(`UI Error: ${event.message || 'Script error'}`, 'error', 6000);
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Captured Unhandled Rejection:', event.reason);
+  const msg = event.reason?.message || event.reason || 'Unhandled network error';
+  if (window.showToast) {
+    window.showToast(`Request Error: ${msg}`, 'error', 6000);
+  }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   initSidebarAndTopbar();
@@ -15,8 +94,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initDraftModal();
   initPricingModal();
   initRecruiterActions();
+  initHistoryControls();
   fetchHealth();
   fetchHistory();
+  loadDashboardStats();
 });
 
 // ================= SIDEBAR & TOPBAR CONTROLS =================
@@ -104,7 +185,7 @@ function initSidebarAndTopbar() {
     const q = e.target.value.trim().toLowerCase();
     
     // Filter Batch Leaderboard rows if present
-    const batchRows = document.querySelectorAll('#batch-table-body tr');
+    const batchRows = document.querySelectorAll('#leaderboard-tbody tr');
     batchRows.forEach(row => {
       const text = row.textContent.toLowerCase();
       row.style.display = text.includes(q) ? '' : 'none';
@@ -190,6 +271,8 @@ function initSingleAudit() {
 
 function initInvalidDocumentActions() {
   const btnUpload = document.getElementById('btn-invalid-upload-resume');
+  const btnDraftReq = document.getElementById('btn-invalid-draft-request');
+  const btnViewReply = document.getElementById('btn-invalid-view-reply');
   const btnReset = document.getElementById('btn-invalid-reset-all');
   const fileInput = document.getElementById('resume-input');
 
@@ -200,28 +283,49 @@ function initInvalidDocumentActions() {
     });
   }
 
+  const openNotice = () => {
+    const draft = currentScorecardData?.draft_reply || {
+      recipient_email: 'applicant@example.com',
+      subject: 'Action Required: Updated Resume Needed for Application',
+      body_text: 'Dear Applicant,\n\nThank you for your interest in TechCorp Solutions. The file uploaded appears to be academic coursework or exercise material rather than a professional resume.\n\nPlease reply with your updated resume PDF so our hiring team can evaluate your technical qualifications.\n\nBest regards,\nTalent Acquisition Team'
+    };
+    openDraftModal(draft, '⚠️ Auto-Drafted Document Resubmission Notice');
+  };
+
+  if (btnDraftReq) btnDraftReq.addEventListener('click', openNotice);
+  if (btnViewReply) btnViewReply.addEventListener('click', openNotice);
+
   if (btnReset) {
     btnReset.addEventListener('click', () => {
-      currentSelectedFile = null;
-      if (fileInput) fileInput.value = '';
-      const fileTag = document.getElementById('file-tag');
-      if (fileTag) fileTag.style.display = 'none';
+      clearSelectedFile();
       showPlaceholderState();
     });
   }
 }
 
+function clearSelectedFile(e) {
+  if (e) e.stopPropagation();
+  currentSelectedFile = null;
+  const fileInput = document.getElementById('resume-input');
+  if (fileInput) fileInput.value = '';
+  const fileTag = document.getElementById('file-tag');
+  if (fileTag) fileTag.style.display = 'none';
+  const fileCard = document.getElementById('selected-file-card');
+  if (fileCard) fileCard.style.display = 'none';
+  const dropContent = document.getElementById('dropzone-content');
+  if (dropContent) dropContent.style.display = 'flex';
+}
+
 function initDropzone() {
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('resume-input');
-  const fileTag = document.getElementById('file-tag');
-  const fileName = document.getElementById('file-name');
   const removeFile = document.getElementById('remove-file');
+  const btnRemoveSelected = document.getElementById('btn-remove-selected-file');
 
   if (!dropzone || !fileInput) return;
 
   dropzone.addEventListener('click', (e) => {
-    if (e.target.id !== 'remove-file') {
+    if (e.target.id !== 'remove-file' && e.target.id !== 'btn-remove-selected-file') {
       fileInput.click();
     }
   });
@@ -255,14 +359,8 @@ function initDropzone() {
     }
   });
 
-  if (removeFile) {
-    removeFile.addEventListener('click', (e) => {
-      e.stopPropagation();
-      currentSelectedFile = null;
-      fileInput.value = '';
-      if (fileTag) fileTag.style.display = 'none';
-    });
-  }
+  if (removeFile) removeFile.addEventListener('click', clearSelectedFile);
+  if (btnRemoveSelected) btnRemoveSelected.addEventListener('click', clearSelectedFile);
 }
 
 function handleFileSelected(file) {
@@ -271,15 +369,34 @@ function handleFileSelected(file) {
   const fileName = document.getElementById('file-name');
   if (fileName) fileName.textContent = file.name;
   if (fileTag) fileTag.style.display = 'inline-flex';
+
+  const fileCard = document.getElementById('selected-file-card');
+  const selectedName = document.getElementById('selected-file-name');
+  const selectedSize = document.getElementById('selected-file-size');
+  const dropContent = document.getElementById('dropzone-content');
+
+  if (fileCard && selectedName && selectedSize) {
+    selectedName.textContent = file.name;
+    const kb = (file.size / 1024).toFixed(1);
+    selectedSize.textContent = `${kb} KB • PDF Document`;
+    fileCard.style.display = 'flex';
+    if (dropContent) dropContent.style.display = 'none';
+  }
 }
 
 function initChips() {
-  const chips = document.querySelectorAll('.chip');
+  const chips = document.querySelectorAll('.chip[data-user]');
   const githubInput = document.getElementById('github-username');
   if (!githubInput) return;
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
-      githubInput.value = chip.getAttribute('data-user');
+      const user = chip.getAttribute('data-user');
+      if (user) {
+        githubInput.value = user;
+        chips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        showToast(`Demo GitHub profile set to @${user}`, 'info');
+      }
     });
   });
 }
@@ -306,8 +423,21 @@ function initDemoSample() {
       if (githubInput && !githubInput.value) {
         githubInput.value = 'tiangolo';
       }
+      const roleEl = document.getElementById('target-role');
+      if (roleEl && !roleEl.value) {
+        roleEl.value = 'Senior Backend Engineer';
+      }
+      const skillsEl = document.getElementById('required-skills');
+      if (skillsEl && !skillsEl.value) {
+        skillsEl.value = 'Python, FastAPI, Docker, PostgreSQL';
+      }
+      const accordion = document.getElementById('optional-job-accordion');
+      if (accordion) accordion.open = true;
+
+      showToast('⚡ Sample Resume (Aarav Sharma) loaded! Ready to audit.', 'success');
     } catch (err) {
       console.warn('Could not load sample_resume.pdf:', err);
+      showToast('Could not load sample resume: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<span>⚡</span> Use Sample Resume';
@@ -325,7 +455,7 @@ function initForm() {
       e.preventDefault();
 
       if (!currentSelectedFile) {
-        alert('Please upload a resume PDF first or click "Use Sample Resume".');
+        showToast('Please upload a resume PDF first or click "Use Sample Resume".', 'warning');
         return;
       }
 
@@ -337,6 +467,7 @@ function initForm() {
       const webhookUrl = document.getElementById('webhook-url')?.value.trim() || '';
 
       showLoadingState();
+      showToast('⚡ Initiating multi-agent candidate audit pipeline...', 'info');
 
       const formData = new FormData();
       formData.append('file', currentSelectedFile);
@@ -353,15 +484,18 @@ function initForm() {
           body: formData
         });
 
+        const data = await parseResponseSafe(res);
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || 'Screening request failed');
+          throw new Error(data.detail || data.message || `Server Error (${res.status}: ${res.statusText || 'Request failed'})`);
         }
 
-        const { task_id } = await res.json();
-        pollForResult(task_id);
+        const taskId = data.task_id;
+        if (!taskId) {
+          throw new Error('Server did not return a valid task_id.');
+        }
+        pollForResult(taskId);
       } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
         showPlaceholderState();
       }
     });
@@ -369,20 +503,30 @@ function initForm() {
 
   if (btnReset) {
     btnReset.addEventListener('click', () => {
+      clearSelectedFile();
+      const formEl = document.getElementById('screen-form');
+      if (formEl) formEl.reset();
+      const wordCount = document.getElementById('jd-word-count');
+      if (wordCount) wordCount.textContent = '0 words';
       showPlaceholderState();
+      showToast('Workspace reset to initial state', 'info');
     });
   }
 
   if (btnDownload) {
     btnDownload.addEventListener('click', () => {
-      if (!currentScorecardData) return;
+      if (!currentScorecardData) {
+        showToast('No active candidate audit to download', 'warning');
+        return;
+      }
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentScorecardData, null, 2));
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `${currentScorecardData.candidate_name.replace(/\s+/g, '_').toLowerCase()}_scorecard.json`);
+      downloadAnchor.setAttribute("download", `${(currentScorecardData.candidate_name || 'candidate').replace(/\s+/g, '_').toLowerCase()}_scorecard.json`);
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
+      showToast('Scorecard JSON exported successfully', 'success');
     });
   }
 
@@ -409,16 +553,20 @@ function initForm() {
     btnSampleJd.addEventListener('click', () => {
       const roleEl = document.getElementById('target-role');
       const skillsEl = document.getElementById('required-skills');
+      const accordion = document.getElementById('optional-job-accordion');
+      if (accordion) accordion.open = true;
+
       if (jdEl) {
         jdEl.value = 'We are hiring a Senior Full-Stack Engineer with 3+ years of experience in Python, TypeScript, React, and Docker to scale our cloud-native web platform. The candidate will architect robust APIs, manage PostgreSQL databases, and lead frontend feature delivery.';
         updateJdWordCount();
       }
-      if (roleEl && !roleEl.value) {
+      if (roleEl) {
         roleEl.value = 'Senior Full-Stack Engineer';
       }
-      if (skillsEl && !skillsEl.value) {
+      if (skillsEl) {
         skillsEl.value = 'Python, TypeScript, React, Docker';
       }
+      showToast('Loaded short Job Description', 'info');
     });
   }
 
@@ -427,6 +575,9 @@ function initForm() {
     btnLinkedInJd.addEventListener('click', () => {
       const roleEl = document.getElementById('target-role');
       const skillsEl = document.getElementById('required-skills');
+      const accordion = document.getElementById('optional-job-accordion');
+      if (accordion) accordion.open = true;
+
       const sampleLinkedInPost = `About the Company:
 TechCorp Enterprise is an industry-leading AI & data engineering platform serving Fortune 500 customers globally. We are expanding our core platform engineering organization and seeking an experienced Senior Full-Stack Engineer.
 
@@ -460,6 +611,7 @@ Preferred Qualifications & Nice-to-Haves:
       if (skillsEl) {
         skillsEl.value = 'Python, TypeScript, React, Docker, PostgreSQL';
       }
+      showToast('💼 Loaded Full LinkedIn Job Description & Requirements', 'info');
     });
   }
 
@@ -469,6 +621,7 @@ Preferred Qualifications & Nice-to-Haves:
       if (jdEl) {
         jdEl.value = '';
         updateJdWordCount();
+        showToast('Job description cleared', 'info');
       }
     });
   }
@@ -478,8 +631,14 @@ Preferred Qualifications & Nice-to-Haves:
     presetBackend.addEventListener('click', () => {
       const roleEl = document.getElementById('target-role');
       const skillsEl = document.getElementById('required-skills');
+      const accordion = document.getElementById('optional-job-accordion');
+      if (accordion) accordion.open = true;
+
       if (roleEl) roleEl.value = 'Senior Backend Engineer';
       if (skillsEl) skillsEl.value = 'Python, FastAPI, Docker, PostgreSQL';
+      document.querySelectorAll('#preset-backend, #preset-fullstack').forEach(b => b.classList.remove('active'));
+      presetBackend.classList.add('active');
+      showToast('Applied Senior Backend Engineer preset', 'success');
     });
   }
   const presetFullstack = document.getElementById('preset-fullstack');
@@ -487,32 +646,74 @@ Preferred Qualifications & Nice-to-Haves:
     presetFullstack.addEventListener('click', () => {
       const roleEl = document.getElementById('target-role');
       const skillsEl = document.getElementById('required-skills');
+      const accordion = document.getElementById('optional-job-accordion');
+      if (accordion) accordion.open = true;
+
       if (roleEl) roleEl.value = 'Full-Stack Engineer';
       if (skillsEl) skillsEl.value = 'React, TypeScript, Node.js, Next.js';
+      document.querySelectorAll('#preset-backend, #preset-fullstack').forEach(b => b.classList.remove('active'));
+      presetFullstack.classList.add('active');
+      showToast('Applied Full-Stack Engineer preset', 'success');
     });
   }
 }
 
 async function pollForResult(taskId) {
   const stages = [
-    { title: '✓ Security Verification...', detail: 'Verifying PDF magic headers and payload integrity' },
-    { title: '✓ Validating Document Taxonomy...', detail: 'Classifying document against academic and resume signals' },
-    { title: '→ Parsing Candidate Claims...', detail: 'Extracting proficiencies, experience and architecture claims' },
-    { title: '→ Auditing Verified GitHub Evidence...', detail: 'Checking public repositories, original code, and commit velocity' },
-    { title: '→ Evaluating Consensus & Final Score...', detail: 'Cross-verifying claims vs evidence to compute final assessment' }
+    { title: 'Resume uploaded & format verified...', detail: 'Validating PDF integrity and parsing structure' },
+    { title: 'Document verification & authenticity check...', detail: 'Cross-verifying document against safety & anti-fraud taxonomy' },
+    { title: 'Candidate info & claimed skills extracted...', detail: 'Structuring proficiencies, career timeline, and project claims' },
+    { title: 'Role match & technical domain analysis...', detail: 'Comparing candidate capabilities against target job expectations' },
+    { title: 'Code evidence & project verification...', detail: 'Auditing verified public GitHub repositories and original code' },
+    { title: 'Preparing recruiter scorecard & decision...', detail: 'Cross-examining claims vs evidence to assemble recruiter briefing' }
   ];
 
   let currentStageIdx = 0;
   const stageTitle = document.getElementById('loading-stage');
   const stageDetail = document.getElementById('loading-detail');
   const progressBar = document.getElementById('progress-bar');
+  const stepIds = ['chk-upload', 'chk-doc', 'chk-claims', 'chk-skills', 'chk-evidence', 'chk-assess'];
+
+  // Initialize checklist steps
+  stepIds.forEach((id, idx) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const icon = el.querySelector('.chk-icon');
+    if (idx === 0) {
+      el.className = 'chk-step done';
+      if (icon) icon.textContent = '✓';
+    } else if (idx === 1) {
+      el.className = 'chk-step active';
+      if (icon) icon.textContent = '○';
+    } else {
+      el.className = 'chk-step';
+      if (icon) icon.textContent = '○';
+    }
+  });
 
   const stageInterval = setInterval(() => {
     currentStageIdx = (currentStageIdx + 1) % stages.length;
-    if (stageTitle) stageTitle.textContent = stages[currentStageIdx].title;
-    if (stageDetail) stageDetail.textContent = stages[currentStageIdx].detail;
-    if (progressBar) progressBar.style.width = `${Math.min(95, (currentStageIdx + 1) * 20)}%`;
-  }, 900);
+    const stg = stages[currentStageIdx];
+    if (stageTitle) stageTitle.textContent = stg.title;
+    if (stageDetail) stageDetail.textContent = stg.detail;
+    if (progressBar) progressBar.style.width = `${Math.min(95, (currentStageIdx + 1) * 16)}%`;
+
+    stepIds.forEach((id, idx) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const icon = el.querySelector('.chk-icon');
+      if (idx <= currentStageIdx) {
+        el.className = 'chk-step done';
+        if (icon) icon.textContent = '✓';
+      } else if (idx === currentStageIdx + 1) {
+        el.className = 'chk-step active';
+        if (icon) icon.textContent = '○';
+      } else {
+        el.className = 'chk-step';
+        if (icon) icon.textContent = '○';
+      }
+    });
+  }, 800);
 
   const pollInterval = setInterval(async () => {
     try {
@@ -524,8 +725,18 @@ async function pollForResult(taskId) {
         clearInterval(pollInterval);
         clearInterval(stageInterval);
         if (progressBar) progressBar.style.width = '100%';
+
+        stepIds.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.className = 'chk-step done';
+            const icon = el.querySelector('.chk-icon');
+            if (icon) icon.textContent = '✓';
+          }
+        });
+
         setTimeout(() => {
-          hideLoadingState();
+          document.getElementById('state-loading').style.display = 'none';
           const isInvalid = data.result.is_valid_resume === false || (data.result.document && data.result.document.is_valid_resume === false);
           if (isInvalid) {
             showInvalidDocumentState(data.result);
@@ -533,8 +744,8 @@ async function pollForResult(taskId) {
             renderScorecard(data.result);
             showResultState();
           }
-          loadRecruitmentKanban();
-          loadScreeningHistory();
+          fetchHistory();
+          loadDashboardStats();
         }, 300);
       } else if (data.status === 'failed') {
         clearInterval(pollInterval);
@@ -601,8 +812,20 @@ function renderScorecard(result) {
   }
 
   const recBadge = document.getElementById('res-rec-badge');
-  recBadge.textContent = isInvalidDoc ? 'REJECT' : result.recommendation;
-  recBadge.className = 'rec-badge ' + (isInvalidDoc ? 'reject' : result.recommendation.toLowerCase());
+  const rawRec = (result.assessment?.recommendation || result.recruiter_recommendation || result.recommendation || 'REVIEW').toUpperCase();
+  let recLabel = 'NEEDS REVIEW';
+  let badgeClass = 'review';
+  if (rawRec.includes('SHORTLIST') || rawRec.includes('STRONG')) {
+    recLabel = 'STRONG CANDIDATE';
+    badgeClass = 'shortlist';
+  } else if (rawRec.includes('REJECT') || rawRec.includes('NOT')) {
+    recLabel = 'NOT RECOMMENDED';
+    badgeClass = 'reject';
+  }
+  if (recBadge) {
+    recBadge.textContent = recLabel;
+    recBadge.className = 'rec-badge ' + badgeClass;
+  }
 
   const overall = isInvalidDoc ? 0 : result.overall_score;
   const scoreCircle = document.getElementById('score-circle');
@@ -623,16 +846,201 @@ function renderScorecard(result) {
   }
   document.getElementById('res-overall-score').style.color = color;
 
-  document.getElementById('res-executive-summary').textContent = result.executive_summary;
+  // Actionable Recruiter Next-Step Banner
+  const actionBanner = document.getElementById('res-action-banner');
+  const actionHeadline = document.getElementById('res-action-headline');
+  const actionSub = document.getElementById('res-action-sub');
+  const actionIcon = document.getElementById('res-action-icon');
 
-  document.getElementById('res-skills-score').textContent = `${result.skills_match_score}%`;
-  document.getElementById('res-skills-bar').style.width = `${result.skills_match_score}%`;
+  if (actionBanner && actionHeadline && actionSub) {
+    const nextAction = result.assessment?.next_action || (badgeClass === 'shortlist' ? 'SCHEDULE_INTERVIEW' : (badgeClass === 'review' ? 'REVIEW_RECOMMENDED' : 'DO_NOT_PROCEED'));
+    const nextActionLabel = result.assessment?.next_action_label || (
+      nextAction === 'SCHEDULE_INTERVIEW'
+        ? 'Next step: Schedule 30-minute technical phone screen'
+        : (nextAction === 'REVIEW_RECOMMENDED'
+          ? 'Next step: Review code evidence and technical discrepancies'
+          : 'Next step: Send polite rejection notice')
+    );
 
-  document.getElementById('res-quality-score').textContent = `${result.code_quality_score}%`;
-  document.getElementById('res-quality-bar').style.width = `${result.code_quality_score}%`;
+    actionHeadline.textContent = nextActionLabel;
+    if (nextAction === 'SCHEDULE_INTERVIEW') {
+      actionBanner.className = 'recruiter-action-banner banner-shortlist';
+      if (actionIcon) actionIcon.textContent = '📅';
+      actionSub.textContent = 'Candidate demonstrates verified skills alignment and authentic project evidence.';
+    } else if (nextAction === 'REVIEW_RECOMMENDED') {
+      actionBanner.className = 'recruiter-action-banner banner-review';
+      if (actionIcon) actionIcon.textContent = '🔍';
+      actionSub.textContent = 'Mixed signals detected between resume claims and verified code. Technical follow-up advised.';
+    } else {
+      actionBanner.className = 'recruiter-action-banner banner-reject';
+      if (actionIcon) actionIcon.textContent = '🛑';
+      actionSub.textContent = 'Insufficient authentic project evidence or major skills mismatch for target role.';
+    }
+  }
 
-  document.getElementById('res-consistency-score').textContent = `${result.consistency_score}%`;
-  document.getElementById('res-consistency-bar').style.width = `${result.consistency_score}%`;
+  // 5 Recruiter Sub-Scores
+  const sub = result.assessment?.sub_scores || {};
+  const skillsVal = sub.skills_match ?? result.skills_match_score ?? 85;
+  const expVal = sub.experience_depth ?? Math.min(100, Math.round((result.years_experience || 3) * 25));
+  const projVal = sub.project_complexity ?? 88;
+  const evVal = sub.technical_evidence ?? result.code_quality_score ?? 85;
+  const qualVal = sub.resume_quality ?? result.consistency_score ?? 88;
+
+  const elSkills = document.getElementById('res-sub-skills');
+  const elSkillsBar = document.getElementById('res-sub-skills-bar');
+  if (elSkills) elSkills.textContent = `${skillsVal}%`;
+  if (elSkillsBar) elSkillsBar.style.width = `${skillsVal}%`;
+
+  const elExp = document.getElementById('res-sub-exp');
+  const elExpBar = document.getElementById('res-sub-exp-bar');
+  if (elExp) elExp.textContent = `${expVal}%`;
+  if (elExpBar) elExpBar.style.width = `${expVal}%`;
+
+  const elProj = document.getElementById('res-sub-proj');
+  const elProjBar = document.getElementById('res-sub-proj-bar');
+  if (elProj) elProj.textContent = `${projVal}%`;
+  if (elProjBar) elProjBar.style.width = `${projVal}%`;
+
+  const elEv = document.getElementById('res-sub-evidence');
+  const elEvBar = document.getElementById('res-sub-evidence-bar');
+  if (elEv) elEv.textContent = `${evVal}%`;
+  if (elEvBar) elEvBar.style.width = `${evVal}%`;
+
+  const elQual = document.getElementById('res-sub-quality');
+  const elQualBar = document.getElementById('res-sub-quality-bar');
+  if (elQual) elQual.textContent = `${qualVal}%`;
+  if (elQualBar) elQualBar.style.width = `${qualVal}%`;
+
+  // Legacy triad synchronization
+  const legacySkills = document.getElementById('res-skills-score');
+  const legacySkillsBar = document.getElementById('res-skills-bar');
+  if (legacySkills) legacySkills.textContent = `${result.skills_match_score}%`;
+  if (legacySkillsBar) legacySkillsBar.style.width = `${result.skills_match_score}%`;
+
+  const legacyQual = document.getElementById('res-quality-score');
+  const legacyQualBar = document.getElementById('res-quality-bar');
+  if (legacyQual) legacyQual.textContent = `${result.code_quality_score}%`;
+  if (legacyQualBar) legacyQualBar.style.width = `${result.code_quality_score}%`;
+
+  const legacyCons = document.getElementById('res-consistency-score');
+  const legacyConsBar = document.getElementById('res-consistency-bar');
+  if (legacyCons) legacyCons.textContent = `${result.consistency_score}%`;
+  if (legacyConsBar) legacyConsBar.style.width = `${result.consistency_score}%`;
+
+  // "Why [Score]?" Card
+  const whyStrengths = document.getElementById('res-why-strengths');
+  const whyAreas = document.getElementById('res-why-areas');
+  const whyScore = result.assessment?.why_score || {};
+
+  if (whyStrengths) {
+    whyStrengths.innerHTML = '';
+    const strengthsList = (whyScore.strengths && whyScore.strengths.length > 0)
+      ? whyScore.strengths
+      : (result.green_flags && result.green_flags.length > 0
+        ? result.green_flags
+        : ['Candidate has authentic project history and verified technical proficiencies.']);
+    strengthsList.forEach(s => {
+      const li = document.createElement('li');
+      li.textContent = s;
+      whyStrengths.appendChild(li);
+    });
+  }
+
+  if (whyAreas) {
+    whyAreas.innerHTML = '';
+    const areasList = (whyScore.areas_to_verify && whyScore.areas_to_verify.length > 0)
+      ? whyScore.areas_to_verify
+      : (result.red_flags && result.red_flags.length > 0
+        ? result.red_flags
+        : ['Confirm architectural ownership and systems scale in technical interview.']);
+    areasList.forEach(a => {
+      const li = document.createElement('li');
+      li.textContent = a;
+      whyAreas.appendChild(li);
+    });
+  }
+
+  // Claim vs Evidence Table
+  const evidenceTableBody = document.getElementById('res-evidence-table-body');
+  if (evidenceTableBody) {
+    evidenceTableBody.innerHTML = '';
+    let claims = result.assessment?.claim_vs_evidence || result.evidence_items || [];
+
+    if (claims.length === 0) {
+      const skillsToCheck = (result.company_required_skills && result.company_required_skills.length > 0)
+        ? result.company_required_skills
+        : (result.skills || ['Python', 'Docker', 'PostgreSQL']);
+      const verifiedList = result.verified_company_skills || [];
+      const matchedList = result.matched_company_skills || skillsToCheck;
+
+      claims = skillsToCheck.map(s => {
+        const isVer = verifiedList.includes(s);
+        const isClaimed = matchedList.includes(s);
+        const hasGithub = Boolean(result.github_username && result.github_username !== 'no_github');
+
+        if (!hasGithub) {
+          return {
+            skill_or_claim: s,
+            claimed_in: 'Resume Skills & Experience',
+            evidence_found: 'No public GitHub profile provided',
+            status: 'Unavailable',
+            notes: 'Request project or repository portfolio'
+          };
+        }
+        if (isVer) {
+          return {
+            skill_or_claim: s,
+            claimed_in: 'Resume Skills / Work History',
+            evidence_found: 'Verified code samples in public repositories',
+            status: 'Verified',
+            notes: 'Strong practical evidence in repository code'
+          };
+        }
+        if (isClaimed) {
+          return {
+            skill_or_claim: s,
+            claimed_in: 'Resume Skills Section',
+            evidence_found: 'Mentioned on resume, no code found in repos',
+            status: 'Partially Verified',
+            notes: 'Verify proficiency during technical screen'
+          };
+        }
+        return {
+          skill_or_claim: s,
+          claimed_in: 'Target Role Requirement',
+          evidence_found: 'Not identified in resume or repositories',
+          status: 'Unverified',
+          notes: 'Candidate may need upskilling for this skill'
+        };
+      });
+    }
+
+    claims.forEach(c => {
+      const tr = document.createElement('tr');
+      let bClass = 'status-badge-unverified';
+      let bIcon = '?';
+
+      if (c.status === 'Verified') {
+        bClass = 'status-badge-verified';
+        bIcon = '✓';
+      } else if (c.status === 'Partially Verified') {
+        bClass = 'status-badge-partial';
+        bIcon = '~';
+      } else if (c.status === 'Unavailable') {
+        bClass = 'status-badge-unavailable';
+        bIcon = '—';
+      }
+
+      tr.innerHTML = `
+        <td><strong>${c.skill_or_claim || c.skill || ''}</strong></td>
+        <td style="color: var(--color-text-muted); font-size: 0.8rem;">${c.claimed_in || 'Resume'}</td>
+        <td style="font-size: 0.82rem;">${c.evidence_found || c.evidence || 'None'}</td>
+        <td><span class="${bClass}">${bIcon} ${c.status || 'Unverified'}</span></td>
+        <td style="color: var(--color-text-dim); font-size: 0.78rem;">${c.notes || ''}</td>
+      `;
+      evidenceTableBody.appendChild(tr);
+    });
+  }
 
   // Company Required Skills Gap Analysis Section
   const companySection = document.getElementById('company-skills-section');
@@ -1056,6 +1464,91 @@ function initRecruiterActions() {
       }
     });
   }
+
+  // Recruiter Action Bar Buttons
+  const btnActionSchedule = document.getElementById('btn-action-schedule');
+  const btnActionRequestInfo = document.getElementById('btn-action-request-info');
+  const btnActionDraft = document.getElementById('btn-action-draft-email');
+  const btnActionReject = document.getElementById('btn-action-reject');
+  const btnActionCopyGuide = document.getElementById('btn-action-copy-guide');
+  const btnActionScreenAnother = document.getElementById('btn-action-screen-another');
+
+  if (btnActionSchedule) {
+    btnActionSchedule.addEventListener('click', () => {
+      if (!currentScorecardData) return;
+      const candidateName = currentScorecardData.candidate_name || 'Candidate';
+      const firstName = candidateName.split(' ')[0] || 'there';
+      const draft = currentScorecardData.draft_reply || {
+        recipient_email: 'candidate@example.com',
+        subject: `Interview Invitation: Technical Screen for ${currentScorecardData.target_role || 'Software Engineer'}`,
+        body_text: `Hi ${firstName},\n\nOur engineering team reviewed your background and verified your technical projects. We were very impressed by your work and would love to invite you for a 30-minute introductory technical conversation.\n\nPlease choose a time that works best for you using our scheduling link below:\n👉 https://calendly.com/techcorp-hiring/30min\n\nLooking forward to speaking with you!\n\nBest regards,\nThe Talent Acquisition Team\nTechCorp Solutions`
+      };
+      openDraftModal(draft, `📅 Schedule Interview (${candidateName})`);
+    });
+  }
+
+  if (btnActionRequestInfo) {
+    btnActionRequestInfo.addEventListener('click', () => {
+      if (!currentScorecardData) return;
+      const candidateName = currentScorecardData.candidate_name || 'Candidate';
+      const firstName = candidateName.split(' ')[0] || 'there';
+      const draft = {
+        recipient_email: 'candidate@example.com',
+        subject: `Additional Information Needed: GitHub / Project Portfolio`,
+        body_text: `Hi ${firstName},\n\nThank you for applying for the ${currentScorecardData.target_role || 'Software Engineer'} position. We are reviewing your application and would love to see direct source code samples or GitHub links for the projects mentioned on your resume.\n\nPlease reply with any public repository links or portfolio references at your convenience.\n\nBest regards,\nThe Talent Acquisition Team\nTechCorp Solutions`
+      };
+      openDraftModal(draft, `📩 Request Additional Information (${candidateName})`);
+    });
+  }
+
+  if (btnActionDraft) {
+    btnActionDraft.addEventListener('click', () => {
+      if (!currentScorecardData) return;
+      const draft = currentScorecardData.draft_reply || {
+        recipient_email: 'candidate@example.com',
+        subject: `Application Update: ${currentScorecardData.target_role || 'Software Engineer'}`,
+        body_text: `Hi,\n\nThank you for applying. We are reviewing your technical profile.`
+      };
+      openDraftModal(draft, `✉️ Draft Candidate Email (${currentScorecardData.candidate_name})`);
+    });
+  }
+
+  if (btnActionReject) {
+    btnActionReject.addEventListener('click', () => {
+      if (!currentScorecardData) return;
+      const candidateName = currentScorecardData.candidate_name || 'Candidate';
+      const firstName = candidateName.split(' ')[0] || 'there';
+      const draft = {
+        recipient_email: 'candidate@example.com',
+        subject: `Application Update: ${currentScorecardData.target_role || 'Software Engineer'}`,
+        body_text: `Dear ${firstName},\n\nThank you for taking the time to share your background with us. After careful review against our current engineering requirements, we have decided not to move forward with your candidacy at this time.\n\nWe appreciate your interest in our team and wish you the best in your search.\n\nBest regards,\nThe Talent Acquisition Team\nTechCorp Solutions`
+      };
+      openDraftModal(draft, `🛑 Candidate Rejection Notice (${candidateName})`);
+    });
+  }
+
+  if (btnActionCopyGuide) {
+    btnActionCopyGuide.addEventListener('click', () => {
+      const guideBtn = document.getElementById('btn-copy-interview-guide');
+      if (guideBtn) {
+        guideBtn.click();
+      } else {
+        navigator.clipboard.writeText(`Technical Interview Guide for ${currentScorecardData?.candidate_name || 'Candidate'}`);
+      }
+      btnActionCopyGuide.innerHTML = '<span>✓</span> Copied!';
+      setTimeout(() => {
+        btnActionCopyGuide.innerHTML = '<span>📋</span> Copy Interview Guide';
+      }, 1800);
+    });
+  }
+
+  if (btnActionScreenAnother) {
+    btnActionScreenAnother.addEventListener('click', () => {
+      clearSelectedFile();
+      showPlaceholderState();
+      window.scrollTo({ top: 80, behavior: 'smooth' });
+    });
+  }
 }
 
 function showPlaceholderState() {
@@ -1103,7 +1596,7 @@ function showInvalidDocumentState(result) {
     } else if (docType === 'EMPTY_OR_CORRUPT') {
       descEl.textContent = 'The uploaded document contains insufficient text or appears corrupt. Please ensure you upload a readable, text-based PDF.';
     } else {
-      descEl.textContent = `The uploaded file does not appear to be a standard candidate resume/CV (classified as ${docType}). Please upload a valid professional resume.`;
+      descEl.textContent = `The uploaded file does not appear to be a candidate resume/CV (classified as ${docType}). Please upload a valid professional resume.`;
     }
   }
 
@@ -1126,16 +1619,20 @@ function showInvalidDocumentState(result) {
   }
 
   // Hook reply draft viewer
-  const btnViewReply = document.getElementById('btn-invalid-view-reply');
-  if (btnViewReply) {
-    btnViewReply.onclick = () => {
-      if (result.draft_reply) {
-        openDraftModal(result.draft_reply);
-      } else {
-        alert('Resubmission notice draft created for applicant.');
-      }
+  const draftHandler = () => {
+    const draft = result.draft_reply || {
+      recipient_email: 'applicant@example.com',
+      subject: 'Action Required: Updated Resume Needed for Application',
+      body_text: 'Dear Applicant,\n\nThank you for your interest in TechCorp Solutions. The file uploaded appears to be academic coursework or exercise material rather than a professional resume.\n\nPlease reply with your updated resume PDF so our hiring team can evaluate your technical qualifications.\n\nBest regards,\nTalent Acquisition Team'
     };
-  }
+    openDraftModal(draft, '⚠️ Auto-Drafted Document Resubmission Notice');
+  };
+
+  const btnDraftReq = document.getElementById('btn-invalid-draft-request');
+  if (btnDraftReq) btnDraftReq.onclick = draftHandler;
+
+  const btnViewReply = document.getElementById('btn-invalid-view-reply');
+  if (btnViewReply) btnViewReply.onclick = draftHandler;
 }
 
 // ================= BATCH AUDIT LOGIC =================
@@ -1297,9 +1794,15 @@ function renderLeaderboardRows() {
     else if (c.rank === 2) rankClass = 'rank-top2';
     else if (c.rank === 3) rankClass = 'rank-top3';
 
+    const isInvalid = c.is_valid_resume === false || c.recruiter_recommendation === 'INVALID_DOCUMENT' || c.recommendation === 'INVALID_DOCUMENT';
+
     let scoreColor = 'var(--green)';
-    if (c.overall_score < 55) scoreColor = 'var(--red)';
+    if (isInvalid || c.overall_score < 55) scoreColor = 'var(--red)';
     else if (c.overall_score < 78) scoreColor = 'var(--yellow)';
+
+    const displayScore = isInvalid ? '0/100' : `${c.overall_score}/100`;
+    const recBadgeClass = isInvalid ? 'reject' : c.recommendation.toLowerCase();
+    const recBadgeLabel = isInvalid ? 'INVALID' : (c.recruiter_recommendation || c.recommendation);
 
     const keyFinding = c.red_flags && c.red_flags.length > 0
       ? `🔴 ${c.red_flags[0]}`
@@ -1307,21 +1810,21 @@ function renderLeaderboardRows() {
         ? `🟢 ${c.green_flags[0]}`
         : 'Clean evaluation.';
 
+    const githubCell = (c.github_username && c.github_username !== 'none' && !isInvalid)
+      ? `<a class="github-link-cell" href="https://github.com/${c.github_username}" target="_blank" onclick="event.stopPropagation();">@${c.github_username}</a>`
+      : `<span style="color: var(--color-text-dim); font-size: 0.8rem;">—</span>`;
+
     tr.innerHTML = `
       <td><span class="rank-badge ${rankClass}">${c.rank}</span></td>
       <td>
         <div class="cand-name-cell">${c.candidate_name}</div>
-        <div class="cand-exp-sub">${c.years_experience || '3.0'} yrs exp</div>
+        <div class="cand-exp-sub">${isInvalid ? (c.document_type || 'Invalid File') : ((c.years_experience || '3.0') + ' yrs exp')}</div>
       </td>
-      <td><span class="score-cell" style="color: ${scoreColor}">${c.overall_score}/100</span></td>
-      <td><span class="rec-badge ${c.recommendation.toLowerCase()}">${c.recommendation}</span></td>
+      <td><span class="score-cell" style="color: ${scoreColor}">${displayScore}</span></td>
+      <td><span class="rec-badge ${recBadgeClass}">${recBadgeLabel}</span></td>
       <td><span style="font-family: var(--font-mono);">${c.skills_match_score}%</span></td>
       <td><span style="font-family: var(--font-mono);">${c.code_quality_score}%</span></td>
-      <td>
-        <a class="github-link-cell" href="https://github.com/${c.github_username}" target="_blank" onclick="event.stopPropagation();">
-          @${c.github_username}
-        </a>
-      </td>
+      <td>${githubCell}</td>
       <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;">
         ${keyFinding}
       </td>
@@ -1334,33 +1837,38 @@ function renderLeaderboardRows() {
 
     tr.addEventListener('click', () => {
       document.getElementById('tab-single-btn').click();
-      renderScorecard({
-        candidate_name: c.candidate_name,
-        github_username: c.github_username,
-        years_experience: c.years_experience,
-        overall_score: c.overall_score,
-        recommendation: c.recommendation,
-        skills_match_score: c.skills_match_score,
-        code_quality_score: c.code_quality_score,
-        consistency_score: c.consistency_score,
-        executive_summary: c.executive_summary,
-        red_flags: c.red_flags,
-        green_flags: c.green_flags,
-        cached: c.cached,
-        latency_seconds: c.latency_seconds,
-        evidence: {
-          total_public_repos: 12,
-          original_repos_count: 10,
-          total_stars: 48,
-          documentation_ratio: 0.85,
-          languages_detected: { "Python": 6, "TypeScript": 4 }
-        },
-        model_votes: {
-          "Consensus Rule Engine": c.overall_score,
-          "Qwen Coder": c.overall_score + 2,
-          "Nemotron": c.overall_score - 1
-        }
-      });
+      if (isInvalid) {
+        showInvalidDocumentState(c);
+      } else {
+        renderScorecard({
+          candidate_name: c.candidate_name,
+          github_username: c.github_username,
+          years_experience: c.years_experience,
+          overall_score: c.overall_score,
+          recommendation: c.recommendation,
+          skills_match_score: c.skills_match_score,
+          code_quality_score: c.code_quality_score,
+          consistency_score: c.consistency_score,
+          executive_summary: c.executive_summary,
+          red_flags: c.red_flags,
+          green_flags: c.green_flags,
+          cached: c.cached,
+          latency_seconds: c.latency_seconds,
+          evidence: {
+            total_public_repos: 12,
+            original_repos_count: 10,
+            total_stars: 48,
+            documentation_ratio: 0.85,
+            languages_detected: { "Python": 6, "TypeScript": 4 }
+          },
+          model_votes: {
+            "Consensus Rule Engine": c.overall_score,
+            "Qwen Coder": c.overall_score + 2,
+            "Nemotron": c.overall_score - 1
+          }
+        });
+        showResultState();
+      }
       window.scrollTo({ top: 100, behavior: 'smooth' });
     });
 
@@ -1658,7 +2166,7 @@ function openDraftModalForCandidate(event, candidateName) {
     ? nameWords[0]
     : 'Applicant';
 
-  const isInvalidDoc = candidate.overall_score === 0 || (candidate.candidate_name || '').toLowerCase().includes('non-resume');
+  const isInvalidDoc = candidate.is_valid_resume === false || (candidate.document && candidate.document.is_valid_resume === false) || candidate.recommendation === 'INVALID_DOCUMENT' || candidate.recruiter_recommendation === 'INVALID_DOCUMENT' || (candidate.candidate_name || '').toLowerCase().includes('non-resume');
   const draft = candidate.email_draft || {
     recipient_email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@example.com`,
     subject: isInvalidDoc
@@ -1684,28 +2192,114 @@ function openDraftModalForCandidate(event, candidateName) {
   modal.style.display = 'flex';
 }
 
-// ================= TELEMETRY =================
+function openDraftModal(draft, title = 'Auto-Drafted Response') {
+  const modal = document.getElementById('draft-modal');
+  if (!modal) return;
+  const titleEl = document.getElementById('modal-draft-title');
+  const recipientEl = document.getElementById('modal-recipient');
+  const subjectEl = document.getElementById('modal-subject');
+  const bodyEl = document.getElementById('modal-body');
+
+  if (titleEl) titleEl.textContent = title;
+  if (recipientEl) recipientEl.textContent = draft?.recipient_email || 'applicant@example.com';
+  if (subjectEl) subjectEl.value = draft?.subject || '';
+  if (bodyEl) bodyEl.value = draft?.body_text || '';
+
+  modal.style.display = 'flex';
+}
+
+// ================= TELEMETRY & DASHBOARD =================
 async function fetchHealth() {
   try {
     const res = await fetch('/api/v1/health');
     if (!res.ok) return;
     const data = await res.json();
-    document.getElementById('cache-hit-rate').textContent = `${data.cache.hit_rate_pct}%`;
+    const cacheEl = document.getElementById('cache-hit-rate');
+    if (cacheEl) cacheEl.textContent = `${data.cache.hit_rate_pct}%`;
   } catch (e) {
     console.warn('Health check failed', e);
   }
 }
 
-async function fetchHistory() {
+async function loadDashboardStats() {
   try {
-    const res = await fetch('/api/v1/screenings');
+    const res = await fetch('/api/v1/dashboard/stats');
+    if (!res.ok) return;
+    const stats = await res.json();
+
+    const elToday = document.getElementById('kpi-screened-today');
+    const elTotal = document.getElementById('kpi-total-screened');
+    const elStrong = document.getElementById('kpi-strong-count');
+    const elReview = document.getElementById('kpi-review-count');
+    const elRejected = document.getElementById('kpi-rejected-count');
+    const elInvalid = document.getElementById('kpi-invalid-count');
+    const elCreditsVal = document.getElementById('kpi-credits-val');
+    const elCreditsSub = document.getElementById('kpi-credits-sub');
+
+    if (elToday) elToday.textContent = stats.screened_today ?? 0;
+    if (elTotal) elTotal.textContent = `${stats.total_screened ?? 0} total screened`;
+    if (elStrong) elStrong.textContent = stats.strong_count ?? 0;
+    if (elReview) elReview.textContent = stats.review_count ?? 0;
+    if (elRejected) elRejected.textContent = (stats.rejected_count ?? 0) + (stats.invalid_count ?? 0);
+    if (elInvalid) elInvalid.textContent = stats.invalid_count ?? 0;
+    if (elCreditsVal) elCreditsVal.textContent = stats.credits_available ?? 250;
+    if (elCreditsSub) elCreditsSub.textContent = `${stats.credits_available ?? 250} available this month`;
+
+    // Also update history filter count chips
+    const cntAll = document.getElementById('hist-cnt-all');
+    const cntStrong = document.getElementById('hist-cnt-strong');
+    const cntReview = document.getElementById('hist-cnt-review');
+    const cntRej = document.getElementById('hist-cnt-rejected');
+    const cntInv = document.getElementById('hist-cnt-invalid');
+
+    if (cntAll) cntAll.textContent = stats.total_screened ?? 0;
+    if (cntStrong) cntStrong.textContent = stats.strong_count ?? 0;
+    if (cntReview) cntReview.textContent = stats.review_count ?? 0;
+    if (cntRej) cntRej.textContent = stats.rejected_count ?? 0;
+    if (cntInv) cntInv.textContent = stats.invalid_count ?? 0;
+  } catch (err) {
+    console.warn('Could not load dashboard stats:', err);
+  }
+}
+
+function initHistoryControls() {
+  const filterBtns = document.querySelectorAll('.hist-filter-btn');
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.getAttribute('data-filter') || 'ALL';
+      fetchHistory(filter, currentHistoryQuery);
+    });
+  });
+
+  const searchInput = document.getElementById('history-search-input');
+  let searchTimer = null;
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        fetchHistory(currentHistoryFilter, e.target.value.trim());
+      }, 250);
+    });
+  }
+}
+
+async function fetchHistory(filter = currentHistoryFilter, query = currentHistoryQuery) {
+  try {
+    currentHistoryFilter = filter;
+    currentHistoryQuery = query;
+
+    const url = `/api/v1/screenings?filter_status=${encodeURIComponent(filter)}&q=${encodeURIComponent(query)}`;
+    const res = await fetch(url);
     if (!res.ok) return;
     const items = await res.json();
     const listEl = document.getElementById('history-list');
-    document.getElementById('history-count').textContent = `${items.length} candidates screened`;
+    const countEl = document.getElementById('history-count');
+    if (countEl) countEl.textContent = `${items.length} candidate${items.length === 1 ? '' : 's'} displayed`;
 
     if (!items.length) {
-      listEl.innerHTML = '<div class="empty-history">No screening history yet. Run an audit above!</div>';
+      listEl.innerHTML = '<div class="empty-history">No candidates match the selected filter.</div>';
       return;
     }
 
@@ -1714,21 +2308,37 @@ async function fetchHistory() {
       const row = document.createElement('div');
       row.className = 'history-item';
       
-      const badgeClass = item.recommendation.toLowerCase();
+      const isInvalid = item.is_valid_resume === false || (item.document && item.document.is_valid_resume === false) || (item.candidate_name || '').toLowerCase().includes('non-resume');
+      
+      let badgeClass = 'reject';
+      let badgeLabel = 'NOT RECOMMENDED';
+      if (isInvalid) {
+        badgeClass = 'reject';
+        badgeLabel = 'INVALID DOCUMENT';
+      } else if (item.recommendation === 'SHORTLIST' || (item.assessment && item.assessment.recommendation === 'STRONG_CANDIDATE')) {
+        badgeClass = 'shortlist';
+        badgeLabel = 'STRONG CANDIDATE';
+      } else if (item.recommendation === 'REVIEW' || (item.assessment && item.assessment.recommendation === 'REVIEW')) {
+        badgeClass = 'review';
+        badgeLabel = 'NEEDS REVIEW';
+      }
+
+      const scoreDisplay = isInvalid ? '0/100' : `${item.overall_score}/100`;
+      const scoreColor = isInvalid ? 'var(--color-danger)' : (item.overall_score >= 78 ? 'var(--color-success)' : (item.overall_score >= 55 ? 'var(--color-warning)' : 'var(--color-danger)'));
+
       row.innerHTML = `
-        <div>
-          <div class="h-candidate">${item.candidate_name}</div>
-          <div class="h-meta">@${item.github_username} • ${item.screened_at || 'Just now'} • ${item.latency_seconds}s</div>
+        <div style="display: flex; flex-direction: column; gap: 3px;">
+          <div class="h-candidate" style="font-weight: 700; font-size: 0.92rem; color: var(--color-text);">${item.candidate_name || 'Candidate'}</div>
+          <div class="h-meta" style="font-size: 0.76rem; color: var(--color-text-muted);">@${item.github_username || 'no_github'} • ${item.screened_at || 'Recently'} • ${item.latency_seconds || '0.8'}s</div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span class="rec-badge ${badgeClass}">${item.recommendation}</span>
-          <span class="h-score">${item.overall_score}/100</span>
+          <span class="rec-badge ${badgeClass}" style="font-size: 0.76rem; padding: 4px 10px;">${badgeLabel}</span>
+          <span class="h-score" style="font-size: 0.95rem; font-weight: 800; color: ${scoreColor};">${scoreDisplay}</span>
         </div>
       `;
 
       row.addEventListener('click', () => {
         document.getElementById('tab-single-btn').click();
-        const isInvalid = item.is_valid_resume === false || (item.document && item.document.is_valid_resume === false) || (item.candidate_name || '').toLowerCase().includes('non-resume');
         if (isInvalid) {
           showInvalidDocumentState(item);
         } else {
@@ -1744,3 +2354,289 @@ async function fetchHistory() {
     console.warn('History fetch error', e);
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

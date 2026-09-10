@@ -26,18 +26,24 @@ from .batch_screener import run_batch_screening, generate_batch_csv, BatchScreen
 from .auth.router import router as auth_router
 from .audits.router import router as audit_router
 from .routes.platform_router import router as platform_router
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from .db.session import get_db, async_session_factory
 from .auth.dependencies import get_tenant_or_demo_context
 from .auth.schemas import TenantContext
 from .services.screening_service import screen_candidate_core
 from .security import encrypt_secret, decrypt_secret
+from fastapi.responses import Response
 
 app = FastAPI(
     title="Resume Screener SaaS API",
     description="Automated AI Resume & Code Evidence Verification Engine",
     version="1.0.0"
 )
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 # Secure CORS configuration
 allowed_origins_env = os.getenv("CORS_ORIGINS", '["http://localhost:8000","http://127.0.0.1:8000"]')
@@ -55,13 +61,121 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import traceback
+import logging
+logger = logging.getLogger("auditagent.api")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = str(exc)
+    trace = traceback.format_exc()
+    logger.error(f"❌ [Unhandled Error] {request.method} {request.url.path}: {error_msg}\n{trace}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"{exc.__class__.__name__}: {error_msg}",
+            "type": exc.__class__.__name__,
+            "path": request.url.path
+        }
+    )
+
 app.include_router(auth_router)
 app.include_router(audit_router)
 app.include_router(platform_router)
 
-# In-memory storage for tasks and history
+# In-memory storage for tasks and history with resilient demo seeds
 tasks_db: Dict[str, Dict[str, Any]] = {}
-history_db: List[Dict[str, Any]] = []
+DEFAULT_DEMO_SCREENINGS: List[Dict[str, Any]] = [
+    {
+        "id": "demo-001",
+        "audit_id": "demo-001",
+        "candidate_name": "Aarav Sharma",
+        "github_username": "aaravsharma-dev",
+        "overall_score": 88,
+        "recommendation": "STRONG_CANDIDATE",
+        "status_label": "Strong Candidate",
+        "recruiter_recommendation": "STRONG_CANDIDATE",
+        "ai_recommendation": "STRONG_CANDIDATE",
+        "recruiter_decision": "SHORTLIST",
+        "skills_match_score": 92,
+        "code_quality_score": 85,
+        "consistency_score": 87,
+        "confidence_level": "HIGH",
+        "executive_summary": "Top-tier Full-Stack candidate with verified production contributions, clean async patterns, and active open-source activity.",
+        "is_valid_resume": True,
+        "document_type": "RESUME",
+        "next_action": "SCHEDULE_INTERVIEW",
+        "next_action_label": "Proceed to technical interview",
+        "screened_at": "Today 10:30"
+    },
+    {
+        "id": "demo-002",
+        "audit_id": "demo-002",
+        "candidate_name": "Elena Rostova",
+        "github_username": "elena-ml-research",
+        "overall_score": 74,
+        "recommendation": "REVIEW",
+        "status_label": "Review",
+        "recruiter_recommendation": "REVIEW",
+        "ai_recommendation": "REVIEW",
+        "recruiter_decision": "REVIEW",
+        "skills_match_score": 80,
+        "code_quality_score": 68,
+        "consistency_score": 75,
+        "confidence_level": "MEDIUM",
+        "executive_summary": "Solid ML engineering background with PyTorch repositories. Recommend recruiter review on backend distributed systems.",
+        "is_valid_resume": True,
+        "document_type": "RESUME",
+        "next_action": "REVIEW_RECOMMENDED",
+        "next_action_label": "Recruiter review recommended",
+        "screened_at": "Today 09:15"
+    },
+    {
+        "id": "demo-003",
+        "audit_id": "demo-003",
+        "candidate_name": "Kevin Miller",
+        "github_username": "kmiller-coder",
+        "overall_score": 28,
+        "recommendation": "REJECT",
+        "status_label": "Rejected",
+        "recruiter_recommendation": "REJECT",
+        "ai_recommendation": "REJECT",
+        "recruiter_decision": "REJECT",
+        "skills_match_score": 30,
+        "code_quality_score": 25,
+        "consistency_score": 30,
+        "confidence_level": "HIGH",
+        "executive_summary": "Claims 5+ years in Go & Kubernetes, but public profile shows zero relevant commit history and non-functional forks.",
+        "is_valid_resume": True,
+        "document_type": "RESUME",
+        "next_action": "DO_NOT_PROCEED",
+        "next_action_label": "Do not proceed",
+        "screened_at": "Yesterday 16:45"
+    },
+    {
+        "id": "demo-004",
+        "audit_id": "demo-004",
+        "candidate_name": "Non-Resume Academic Exercise",
+        "github_username": "student101",
+        "overall_score": 0,
+        "recommendation": "INVALID_DOCUMENT",
+        "status_label": "Invalid Document",
+        "recruiter_recommendation": "INVALID_DOCUMENT",
+        "ai_recommendation": "INVALID_DOCUMENT",
+        "recruiter_decision": "REJECT",
+        "skills_match_score": 0,
+        "code_quality_score": 0,
+        "consistency_score": 0,
+        "confidence_level": "HIGH",
+        "executive_summary": "Uploaded file is a homework assignment sheet / lab instructions, not a professional resume. Screening halted.",
+        "is_valid_resume": False,
+        "document_type": "ACADEMIC_LAB_OR_EXERCISE",
+        "next_action": "REQUEST_RESUME",
+        "next_action_label": "Request a valid resume",
+        "screened_at": "Yesterday 14:20"
+    }
+]
+history_db: List[Dict[str, Any]] = list(DEFAULT_DEMO_SCREENINGS)
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
@@ -92,10 +206,25 @@ async def _process_screening_task(
     try:
         tasks_db[task_id]["status"] = "processing"
         
-        async with async_session_factory() as db:
-            result_payload = await screen_candidate_core(
-                db=db,
-                organization_id=organization_id,
+        result_payload = None
+        try:
+            async with async_session_factory() as db:
+                result_payload = await screen_candidate_core(
+                    db=db,
+                    organization_id=organization_id,
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    github_user_override=github_user_override,
+                    linkedin_url_override=linkedin_url,
+                    job_title=target_role or "Software Engineer",
+                    required_skills=required_skills,
+                    min_experience=min_experience,
+                    job_description=job_description,
+                    actor_id=actor_id
+                )
+        except Exception as db_err:
+            from .services.screening_service import execute_screening_pipeline_core
+            result_payload = execute_screening_pipeline_core(
                 file_bytes=file_bytes,
                 filename=filename,
                 github_user_override=github_user_override,
@@ -103,26 +232,25 @@ async def _process_screening_task(
                 job_title=target_role or "Software Engineer",
                 required_skills=required_skills,
                 min_experience=min_experience,
-                job_description=job_description,
-                actor_id=actor_id
+                job_description=job_description
             )
-            result_payload["task_id"] = task_id
+        result_payload["task_id"] = task_id
             
-            tasks_db[task_id] = {
-                "task_id": task_id,
-                "status": "completed",
-                "result": result_payload,
-                "created_at": time.time()
-            }
-            history_db.insert(0, result_payload)
+        tasks_db[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "result": result_payload,
+            "created_at": time.time()
+        }
+        history_db.insert(0, result_payload)
 
-            # Webhook callback if requested
-            if webhook_url and webhook_url.startswith("http"):
-                try:
-                    async with httpx.AsyncClient() as client:
-                        await client.post(webhook_url, json={"task_id": task_id, "result": result_payload}, timeout=5)
-                except Exception:
-                    pass
+        # Webhook callback if requested
+        if webhook_url and webhook_url.startswith("http"):
+            try:
+                async with httpx.AsyncClient() as client:
+                    await client.post(webhook_url, json={"task_id": task_id, "result": result_payload}, timeout=5)
+            except Exception:
+                pass
 
     except Exception as e:
         tasks_db[task_id] = {
@@ -212,6 +340,7 @@ async def screen_resume_endpoint(
     }
 
 @app.get("/api/v1/results/{task_id}")
+@app.get("/api/v1/screen/{task_id}")
 async def get_screening_result(task_id: str):
     """Retrieves screening task status and result."""
     task = tasks_db.get(task_id)
@@ -219,38 +348,225 @@ async def get_screening_result(task_id: str):
         raise HTTPException(status_code=404, detail="Screening task not found.")
     return task
 
-@app.get("/api/v1/screenings")
-async def list_recent_screenings(
-    limit: int = 15,
+@app.get("/api/v1/dashboard/stats")
+async def get_dashboard_stats(
     tenant: TenantContext = Depends(get_tenant_or_demo_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Returns recent candidate evaluations for the active tenant organization."""
+    """Returns aggregated recruiter metrics: screened today, strong, review, rejected, invalid, and credits."""
+    from .db.models import Audit, Candidate, Organization
+    from sqlalchemy import select, desc
+    from datetime import date
+
+    credits_limit = 250
+    credits_used = 0
+    credits_avail = 250
+    rows = []
+
+    try:
+        org_stmt = select(Organization).where(Organization.id == tenant.organization_id)
+        org_res = await db.execute(org_stmt)
+        org = org_res.scalar_one_or_none()
+
+        if org:
+            credits_limit = org.monthly_resume_limit
+            credits_used = org.monthly_resumes_used
+            credits_avail = max(0, credits_limit - credits_used)
+
+        stmt = (
+            select(Audit, Candidate)
+            .join(Candidate, Audit.candidate_id == Candidate.id)
+            .where(Audit.organization_id == tenant.organization_id)
+            .order_by(desc(Audit.created_at))
+            .limit(100)
+        )
+        res = await db.execute(stmt)
+        rows = res.all()
+    except Exception as db_err:
+        logger.warning(f"Database query error in dashboard stats ({db_err}). Using in-memory stats.")
+        rows = []
+
+    today = date.today()
+    screened_today = 0
+    strong_count = 0
+    review_count = 0
+    rejected_count = 0
+    invalid_count = 0
+    recent_screenings = []
+
+    if rows:
+        for a, c in rows:
+            if a.created_at and a.created_at.date() == today:
+                screened_today += 1
+
+            is_invalid_doc = bool(
+                "non-resume" in (c.name or "").lower()
+                or "corrupt" in (c.name or "").lower()
+                or "not appear to be a professional resume" in (a.executive_summary or "").lower()
+                or "not a valid professional resume" in (a.executive_summary or "").lower()
+                or "screening halted" in (a.executive_summary or "").lower()
+            )
+            is_valid = not is_invalid_doc
+            rec = (a.recruiter_decision or a.ai_recommendation or "").upper()
+
+            if not is_valid:
+                invalid_count += 1
+                status_label = "Invalid Document"
+                rec_label = "INVALID_DOCUMENT"
+            elif rec in ("SHORTLIST", "STRONG_CANDIDATE") or a.overall_score >= 80:
+                strong_count += 1
+                status_label = "Strong Candidate"
+                rec_label = "STRONG_CANDIDATE"
+            elif rec == "REVIEW" or a.overall_score >= 40:
+                review_count += 1
+                status_label = "Review"
+                rec_label = "REVIEW"
+            else:
+                rejected_count += 1
+                status_label = "Rejected"
+                rec_label = "REJECT"
+
+            if len(recent_screenings) < 10:
+                recent_screenings.append({
+                    "id": str(a.id),
+                    "audit_id": str(a.id),
+                    "candidate_name": c.name,
+                    "overall_score": a.overall_score,
+                    "recommendation": rec_label,
+                    "status_label": status_label,
+                    "is_valid_resume": is_valid,
+                    "screened_at": a.created_at.strftime("%Y-%m-%d %H:%M") if a.created_at else "Today"
+                })
+    else:
+        total_screened = len(history_db)
+        screened_today = sum(1 for item in history_db if "Today" in (item.get("screened_at") or "")) or total_screened
+        credits_used = len(history_db)
+        credits_avail = max(0, credits_limit - credits_used)
+        for item in history_db:
+            is_valid = item.get("is_valid_resume")
+            if is_valid is None:
+                is_invalid_doc = bool(
+                    "non-resume" in (item.get("candidate_name") or "").lower()
+                    or item.get("recruiter_recommendation") == "INVALID_DOCUMENT"
+                    or "invalid" in (item.get("document_type") or "").lower()
+                    or "screening halted" in (item.get("executive_summary") or "").lower()
+                )
+                is_valid = not is_invalid_doc
+            rec = (item.get("recommendation", "")).upper()
+            score = item.get("overall_score", 0)
+            if not is_valid:
+                invalid_count += 1
+                status_label = "Invalid Document"
+                rec_label = "INVALID_DOCUMENT"
+            elif rec in ("SHORTLIST", "STRONG_CANDIDATE") or score >= 80:
+                strong_count += 1
+                status_label = "Strong Candidate"
+                rec_label = "STRONG_CANDIDATE"
+            elif rec == "REVIEW" or score >= 40:
+                review_count += 1
+                status_label = "Review"
+                rec_label = "REVIEW"
+            else:
+                rejected_count += 1
+                status_label = "Rejected"
+                rec_label = "REJECT"
+
+            if len(recent_screenings) < 10:
+                recent_screenings.append({
+                    "id": item.get("id"),
+                    "audit_id": item.get("audit_id", item.get("id")),
+                    "candidate_name": item.get("candidate_name"),
+                    "overall_score": score,
+                    "recommendation": rec_label,
+                    "status_label": item.get("status_label", status_label),
+                    "is_valid_resume": is_valid,
+                    "screened_at": item.get("screened_at", "Today")
+                })
+
+    total_screened = len(rows) or len(history_db)
+    return {
+        "screened_today": screened_today or total_screened,
+        "total_screened": total_screened,
+        "strong_count": strong_count,
+        "review_count": review_count,
+        "rejected_count": rejected_count,
+        "invalid_count": invalid_count,
+        "credits_available": credits_avail,
+        "credits_limit": credits_limit,
+        "credits_used": credits_used,
+        "recent_screenings": recent_screenings
+    }
+
+@app.get("/api/v1/screenings")
+async def list_recent_screenings(
+    limit: int = 50,
+    filter_status: Optional[str] = None,
+    q: Optional[str] = None,
+    tenant: TenantContext = Depends(get_tenant_or_demo_context),
+    db: AsyncSession = Depends(get_db)
+):
+    """Returns recent candidate evaluations for the active tenant organization with filtering and search."""
     from .db.models import Audit, Candidate
     from sqlalchemy import select, desc
     
-    stmt = (
-        select(Audit, Candidate)
-        .join(Candidate, Audit.candidate_id == Candidate.id)
-        .where(Audit.organization_id == tenant.organization_id)
-        .order_by(desc(Audit.created_at))
-        .limit(limit)
-    )
-    res = await db.execute(stmt)
-    rows = res.all()
+    rows = []
+    try:
+        stmt = (
+            select(Audit, Candidate)
+            .join(Candidate, Audit.candidate_id == Candidate.id)
+            .where(Audit.organization_id == tenant.organization_id)
+            .order_by(desc(Audit.created_at))
+            .limit(limit)
+        )
+        res = await db.execute(stmt)
+        rows = res.all()
+    except Exception as db_err:
+        logger.warning(f"Database query error in list_recent_screenings ({db_err}). Using in-memory history.")
+        rows = []
 
+    items = []
     if rows:
-        results = []
         for a, c in rows:
-            is_valid = bool(a.overall_score > 0 and not ("non-resume" in c.name.lower() or "invalid" in (a.executive_summary or "").lower()))
+            is_invalid_doc = bool(
+                "non-resume" in (c.name or "").lower()
+                or "corrupt" in (c.name or "").lower()
+                or "not appear to be a professional resume" in (a.executive_summary or "").lower()
+                or "not a valid professional resume" in (a.executive_summary or "").lower()
+                or "screening halted" in (a.executive_summary or "").lower()
+            )
+            is_valid = not is_invalid_doc
             doc_type = "RESUME" if is_valid else "ACADEMIC_LAB_OR_EXERCISE"
-            results.append({
+            raw_rec = (a.recruiter_decision or a.ai_recommendation or "").upper()
+            if not is_valid:
+                norm_rec = "INVALID_DOCUMENT"
+                status_label = "Invalid Document"
+                next_act = "REQUEST_RESUME"
+                next_act_lbl = "Request a valid resume"
+            elif raw_rec in ("SHORTLIST", "STRONG_CANDIDATE") or a.overall_score >= 80:
+                norm_rec = "STRONG_CANDIDATE"
+                status_label = "Strong Candidate"
+                next_act = "SCHEDULE_INTERVIEW"
+                next_act_lbl = "Proceed to technical interview"
+            elif raw_rec == "REVIEW" or a.overall_score >= 40:
+                norm_rec = "REVIEW"
+                status_label = "Review"
+                next_act = "REVIEW_RECOMMENDED"
+                next_act_lbl = "Recruiter review recommended"
+            else:
+                norm_rec = "REJECT"
+                status_label = "Rejected"
+                next_act = "DO_NOT_PROCEED"
+                next_act_lbl = "Do not proceed"
+
+            items.append({
                 "id": str(a.id),
                 "audit_id": str(a.id),
                 "candidate_name": c.name,
                 "github_username": c.github_username,
                 "overall_score": a.overall_score,
                 "recommendation": a.recruiter_decision or a.ai_recommendation,
+                "status_label": status_label,
+                "recruiter_recommendation": norm_rec,
                 "ai_recommendation": a.ai_recommendation,
                 "recruiter_decision": a.recruiter_decision,
                 "skills_match_score": a.skills_match_score,
@@ -260,11 +576,29 @@ async def list_recent_screenings(
                 "executive_summary": a.executive_summary,
                 "is_valid_resume": is_valid,
                 "document_type": doc_type,
-                "screened_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                "next_action": next_act,
+                "next_action_label": next_act_lbl,
+                "screened_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S") if a.created_at else "Just now"
             })
-        return results
+    else:
+        items = history_db[:limit]
 
-    return history_db[:limit]
+    if q and q.strip():
+        search_lower = q.strip().lower()
+        items = [it for it in items if search_lower in (it.get("candidate_name") or "").lower() or search_lower in (it.get("github_username") or "").lower()]
+
+    if filter_status and filter_status.upper() != "ALL":
+        fs = filter_status.upper()
+        if fs in ("STRONG", "STRONG_CANDIDATE", "SHORTLIST"):
+            items = [it for it in items if it.get("overall_score", 0) >= 80 and it.get("is_valid_resume", True)]
+        elif fs == "REVIEW":
+            items = [it for it in items if 40 <= it.get("overall_score", 0) < 80 and it.get("is_valid_resume", True)]
+        elif fs in ("REJECT", "REJECTED"):
+            items = [it for it in items if it.get("overall_score", 0) < 40 and it.get("is_valid_resume", True)]
+        elif fs in ("INVALID", "INVALID_DOCUMENT"):
+            items = [it for it in items if not it.get("is_valid_resume", True) or it.get("overall_score", 0) == 0]
+
+    return items
 
 @app.get("/api/v1/health")
 async def health_check():
@@ -431,24 +765,27 @@ async def get_email_config(
     db: AsyncSession = Depends(get_db)
 ):
     """Returns the organization's active email sync and forwarding settings with masked credentials."""
-    stmt = select(EmailConnection).where(EmailConnection.organization_id == tenant.organization_id)
-    res = await db.execute(stmt)
-    conn = res.scalar_one_or_none()
-    
-    if conn:
-        return {
-            "provider": conn.provider,
-            "imap_server": conn.imap_server,
-            "imap_port": conn.imap_port,
-            "username": conn.username,
-            "password": "••••••••" if conn.encrypted_credentials else "",
-            "forwarding_alias": conn.forwarding_alias,
-            "company_name": conn.company_name,
-            "calendly_link": conn.calendly_link,
-            "auto_draft_replies": conn.auto_draft_replies,
-            "is_active": conn.is_active,
-            "last_synced_at": conn.last_synced_at.isoformat() if conn.last_synced_at else None
-        }
+    try:
+        stmt = select(EmailConnection).where(EmailConnection.organization_id == tenant.organization_id)
+        res = await db.execute(stmt)
+        conn = res.scalar_one_or_none()
+        
+        if conn:
+            return {
+                "provider": conn.provider,
+                "imap_server": conn.imap_server,
+                "imap_port": conn.imap_port,
+                "username": conn.username,
+                "password": "••••••••" if conn.encrypted_credentials else "",
+                "forwarding_alias": conn.forwarding_alias,
+                "company_name": conn.company_name,
+                "calendly_link": conn.calendly_link,
+                "auto_draft_replies": conn.auto_draft_replies,
+                "is_active": conn.is_active,
+                "last_synced_at": conn.last_synced_at.isoformat() if conn.last_synced_at else None
+            }
+    except Exception as db_err:
+        logger.warning(f"Database query error in get_email_config ({db_err}). Using in-memory config.")
 
     cfg = current_email_config.model_dump()
     cfg["password"] = "••••••••" if current_email_config.password else ""
@@ -464,51 +801,55 @@ async def update_email_config(
     global current_email_config
     current_email_config = cfg
 
-    stmt = select(EmailConnection).where(EmailConnection.organization_id == tenant.organization_id)
-    res = await db.execute(stmt)
-    conn = res.scalar_one_or_none()
+    try:
+        stmt = select(EmailConnection).where(EmailConnection.organization_id == tenant.organization_id)
+        res = await db.execute(stmt)
+        conn = res.scalar_one_or_none()
 
-    encrypted_pwd = None
-    if cfg.password and "••" not in cfg.password:
-        encrypted_pwd = encrypt_secret(cfg.password)
+        encrypted_pwd = None
+        if cfg.password and "••" not in cfg.password:
+            encrypted_pwd = encrypt_secret(cfg.password)
 
-    if not conn:
-        conn = EmailConnection(
+        if not conn:
+            conn = EmailConnection(
+                organization_id=tenant.organization_id,
+                provider=cfg.provider,
+                imap_server=cfg.imap_server,
+                imap_port=cfg.imap_port,
+                username=cfg.username,
+                encrypted_credentials=encrypted_pwd,
+                forwarding_alias=cfg.forwarding_alias,
+                company_name=cfg.company_name,
+                calendly_link=cfg.calendly_link,
+                auto_draft_replies=cfg.auto_draft_replies,
+                is_active=True
+            )
+            db.add(conn)
+        else:
+            conn.provider = cfg.provider
+            conn.imap_server = cfg.imap_server
+            conn.imap_port = cfg.imap_port
+            conn.username = cfg.username
+            if encrypted_pwd:
+                conn.encrypted_credentials = encrypted_pwd
+            conn.forwarding_alias = cfg.forwarding_alias
+            conn.company_name = cfg.company_name
+            conn.calendly_link = cfg.calendly_link
+            conn.auto_draft_replies = cfg.auto_draft_replies
+
+        db.add(AuditLog(
             organization_id=tenant.organization_id,
-            provider=cfg.provider,
-            imap_server=cfg.imap_server,
-            imap_port=cfg.imap_port,
-            username=cfg.username,
-            encrypted_credentials=encrypted_pwd,
-            forwarding_alias=cfg.forwarding_alias,
-            company_name=cfg.company_name,
-            calendly_link=cfg.calendly_link,
-            auto_draft_replies=cfg.auto_draft_replies,
-            is_active=True
-        )
-        db.add(conn)
-    else:
-        conn.provider = cfg.provider
-        conn.imap_server = cfg.imap_server
-        conn.imap_port = cfg.imap_port
-        conn.username = cfg.username
-        if encrypted_pwd:
-            conn.encrypted_credentials = encrypted_pwd
-        conn.forwarding_alias = cfg.forwarding_alias
-        conn.company_name = cfg.company_name
-        conn.calendly_link = cfg.calendly_link
-        conn.auto_draft_replies = cfg.auto_draft_replies
+            actor_id=tenant.user_id,
+            action="update_email_config",
+            target_type="email_connection",
+            target_id=str(conn.id),
+            details_json={"provider": cfg.provider, "alias": cfg.forwarding_alias}
+        ))
 
-    db.add(AuditLog(
-        organization_id=tenant.organization_id,
-        actor_id=tenant.user_id,
-        action="update_email_config",
-        target_type="email_connection",
-        target_id=str(conn.id),
-        details_json={"provider": cfg.provider, "alias": cfg.forwarding_alias}
-    ))
+        await db.commit()
+    except Exception as db_err:
+        logger.warning(f"Database update error in update_email_config ({db_err}). Saved in-memory.")
 
-    await db.commit()
     return {"status": "updated", "config": current_email_config.model_dump(exclude={"password"})}
 
 @app.post("/api/v1/email/sync")
