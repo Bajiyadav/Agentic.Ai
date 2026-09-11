@@ -290,34 +290,96 @@
   // --- Render Questions & Editor ---
   const MCQ_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
+  function getQuestionSections() {
+    const mcqs = [];
+    const challenges = [];
+    state.questions.forEach((q, idx) => {
+      const isMcq = q.type === 'mcq' || q.section === 'mcq' || (q.options && q.options.length > 0);
+      if (isMcq) {
+        mcqs.push(idx);
+      } else {
+        challenges.push(idx);
+      }
+    });
+    return { mcqs, challenges };
+  }
+
   function renderQuestionTabs() {
     questionTabsBar.innerHTML = '';
-    if (progressDotsBar) progressDotsBar.innerHTML = '';
+    const { mcqs, challenges } = getQuestionSections();
+    const currIdx = state.currentQuestionIndex;
+    const isCurrentInMcq = mcqs.includes(currIdx);
 
-    state.questions.forEach((q, idx) => {
-      // Top Question Tab Button
+    // Filter head tabs: show ONLY the questions for the current active section
+    const activeSectionIndices = isCurrentInMcq ? mcqs : challenges;
+
+    activeSectionIndices.forEach((qIdx) => {
+      const q = state.questions[qIdx];
       const btn = document.createElement('button');
-      btn.className = `q-tab-btn ${idx === 0 ? 'active' : ''}`;
+      btn.className = `q-tab-btn ${qIdx === currIdx ? 'active' : ''}`;
+      
       const isMcq = q.type === 'mcq' || q.section === 'mcq';
       const isSql = q.type === 'sql' || q.section === 'sql';
-      const typeLabel = isMcq ? 'MCQ' : (isSql ? 'SQL' : 'DSA');
-      btn.textContent = `Q${idx + 1}: ${typeLabel}`;
-      btn.title = `${q.section_title || ''} - ${q.title}`;
-      btn.addEventListener('click', () => loadQuestion(idx));
-      questionTabsBar.appendChild(btn);
+      const isDebugging = q.type === 'debugging' || (q.title && q.title.toLowerCase().includes('debugging'));
+      const isSecurity = q.type === 'security' || (q.title && q.title.toLowerCase().includes('security'));
 
-      // Bottom Direct Question Pill Button
-      if (progressDotsBar) {
+      let typeIcon = '💻';
+      let typeLabel = 'Coding';
+      if (isMcq) {
+        typeIcon = qIdx === 0 ? '📘' : '🏛️';
+        typeLabel = qIdx === 0 ? 'Concept' : 'Architecture';
+      } else if (isSql) {
+        typeIcon = '🗄️';
+        typeLabel = 'SQL';
+      } else if (isDebugging) {
+        typeIcon = '🐛';
+        typeLabel = 'Debugging';
+      } else if (isSecurity) {
+        typeIcon = '🛡️';
+        typeLabel = 'Defense';
+      }
+
+      btn.innerHTML = `<span>${typeIcon} Q${qIdx + 1}: ${typeLabel}</span>`;
+      btn.title = `${q.section_title || ''} - ${q.title}`;
+      btn.addEventListener('click', () => loadQuestion(qIdx));
+      questionTabsBar.appendChild(btn);
+    });
+
+    // Update Section Navigation Buttons in banner
+    const btnSecMcq = document.getElementById('btn-section-mcq');
+    const btnSecChallenges = document.getElementById('btn-section-challenges');
+    if (btnSecMcq) {
+      btnSecMcq.classList.toggle('active', isCurrentInMcq);
+      btnSecMcq.style.background = isCurrentInMcq ? 'rgba(168,85,247,0.25)' : 'rgba(15,23,42,0.6)';
+      btnSecMcq.style.color = isCurrentInMcq ? '#c084fc' : '#94a3b8';
+      btnSecMcq.style.borderColor = isCurrentInMcq ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.1)';
+      btnSecMcq.onclick = () => {
+        if (mcqs.length > 0) loadQuestion(mcqs[0]);
+      };
+    }
+    if (btnSecChallenges) {
+      btnSecChallenges.classList.toggle('active', !isCurrentInMcq);
+      btnSecChallenges.style.background = !isCurrentInMcq ? 'rgba(56,189,248,0.25)' : 'rgba(15,23,42,0.6)';
+      btnSecChallenges.style.color = !isCurrentInMcq ? '#38bdf8' : '#94a3b8';
+      btnSecChallenges.style.borderColor = !isCurrentInMcq ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)';
+      btnSecChallenges.onclick = () => {
+        if (challenges.length > 0) loadQuestion(challenges[0]);
+      };
+    }
+
+    // Bottom Direct Question Pill Button (shows all questions across full exam)
+    if (progressDotsBar && progressDotsBar.children.length === 0) {
+      state.questions.forEach((q, idx) => {
         const qBtn = document.createElement('button');
         qBtn.type = 'button';
-        qBtn.className = `btn-q-direct ${idx === 0 ? 'active' : ''}`;
+        qBtn.className = `btn-q-direct ${idx === currIdx ? 'active' : ''}`;
         qBtn.setAttribute('data-idx', idx);
         qBtn.title = `Jump directly to Q${idx + 1}: ${q.title}`;
         qBtn.innerHTML = `<span>Q${idx + 1}</span><span class="q-check-mark" style="display: none; font-size: 0.75rem; color: #4ade80;">✓</span>`;
         qBtn.addEventListener('click', () => loadQuestion(idx));
         progressDotsBar.appendChild(qBtn);
-      }
-    });
+      });
+    }
 
     updateProgressDots();
   }
@@ -336,7 +398,11 @@
     }
 
     if (progressIndicatorText && state.questions.length > 0) {
-      progressIndicatorText.textContent = `Question ${state.currentQuestionIndex + 1} of ${state.questions.length}`;
+      const { mcqs } = getQuestionSections();
+      const inMcq = mcqs.includes(state.currentQuestionIndex);
+      progressIndicatorText.textContent = inMcq 
+        ? `Section 1: Question ${state.currentQuestionIndex + 1} of ${mcqs.length} (MCQs)`
+        : `Section 2: Question ${state.currentQuestionIndex + 1} of ${state.questions.length} (Challenge ${state.currentQuestionIndex - mcqs.length + 1} of ${state.questions.length - mcqs.length})`;
     }
   }
 
@@ -345,64 +411,30 @@
     if (index < 0 || index >= state.questions.length) return;
     state.currentQuestionIndex = index;
 
-    // Update active state across tabs
-    const tabs = questionTabsBar.querySelectorAll('.q-tab-btn');
-    tabs.forEach((t, i) => t.classList.toggle('active', i === index));
+    // Re-render head tabs to match current active section
+    renderQuestionTabs();
 
     const q = state.questions[index];
     const isMcq = q.type === 'mcq' || q.section === 'mcq' || (q.options && q.options.length > 0);
     const isSql = q.type === 'sql' || q.section === 'sql';
-
-    // Detect question type traits
     const isDebugging = q.type === 'debugging' || (q.title && q.title.toLowerCase().includes('debugging'));
     const isSecurity = q.type === 'security' || (q.title && q.title.toLowerCase().includes('security'));
+
+    const { mcqs, challenges } = getQuestionSections();
+    const isLastQuestion = index === state.questions.length - 1;
+    const isFirstChallenge = index === challenges[0];
 
     // Update Section Banner Header
     const sectionTitleDisplay = document.getElementById('section-title-display');
     const sectionBadgeIcon = document.getElementById('section-badge-icon');
-    const sectionBadgePill = document.getElementById('section-badge-pill');
 
     if (sectionTitleDisplay) {
       if (isMcq) {
-        sectionTitleDisplay.textContent = q.section_title || "Section 1: Multiple Choice Questions (MCQs)";
+        sectionTitleDisplay.textContent = "Section 1: Multiple Choice Questions (MCQs)";
         if (sectionBadgeIcon) sectionBadgeIcon.textContent = "🔷";
-        if (sectionBadgePill) {
-          sectionBadgePill.textContent = "MCQ • Concepts";
-          sectionBadgePill.style.background = "rgba(168,85,247,0.15)";
-          sectionBadgePill.style.color = "#c084fc";
-        }
-      } else if (isSql) {
-        sectionTitleDisplay.textContent = q.section_title || "Section 2: SQL Analytics & Challenges";
-        if (sectionBadgeIcon) sectionBadgeIcon.textContent = "🗄️";
-        if (sectionBadgePill) {
-          sectionBadgePill.textContent = "SQL • Database";
-          sectionBadgePill.style.background = "rgba(16,185,129,0.15)";
-          sectionBadgePill.style.color = "#34d399";
-        }
-      } else if (isDebugging) {
-        sectionTitleDisplay.textContent = q.section_title || "Section 2: Code Debugging & Bug Fixing";
-        if (sectionBadgeIcon) sectionBadgeIcon.textContent = "🐛";
-        if (sectionBadgePill) {
-          sectionBadgePill.textContent = "Bug Fix • Debugging";
-          sectionBadgePill.style.background = "rgba(245,158,11,0.15)";
-          sectionBadgePill.style.color = "#fbbf24";
-        }
-      } else if (isSecurity) {
-        sectionTitleDisplay.textContent = q.section_title || "Section 2: Security & Defense Challenges";
-        if (sectionBadgeIcon) sectionBadgeIcon.textContent = "🛡️";
-        if (sectionBadgePill) {
-          sectionBadgePill.textContent = "Security • Defense";
-          sectionBadgePill.style.background = "rgba(244,63,94,0.15)";
-          sectionBadgePill.style.color = "#fb7185";
-        }
       } else {
-        sectionTitleDisplay.textContent = q.section_title || "Section 2: Coding & DSA Challenges";
+        sectionTitleDisplay.textContent = "Section 2: Hands-On Technical Challenges (Coding, SQL & Debugging)";
         if (sectionBadgeIcon) sectionBadgeIcon.textContent = "💻";
-        if (sectionBadgePill) {
-          sectionBadgePill.textContent = "Coding • DSA";
-          sectionBadgePill.style.background = "rgba(6,182,212,0.15)";
-          sectionBadgePill.style.color = "#22d3ee";
-        }
       }
     }
 
@@ -441,6 +473,18 @@
       typeLabel = 'Security & Threat Defense';
     }
 
+    // Inside-page action button for challenges
+    const insideChallengeNav = !isMcq ? `
+      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+        <button type="button" class="btn-nav" id="btn-inside-challenge-prev" style="font-size: 0.82rem; padding: 6px 14px;">
+          ${isFirstChallenge ? '← Back to MCQs' : '← Previous Challenge'}
+        </button>
+        <button type="button" class="btn-portal-primary" id="btn-inside-challenge-next" style="width: auto; font-size: 0.82rem; padding: 8px 18px; background: ${isLastQuestion ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #06b6d4, #3b82f6)'};">
+          ${isLastQuestion ? '✓ Submit Assessment' : 'Next Challenge ➔'}
+        </button>
+      </div>
+    ` : '';
+
     questionDetailsWrap.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
         <span style="${badgeStyle} padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">${typeLabel}</span>
@@ -455,7 +499,26 @@
         </div>
       ` : ''}
       ${tcHtml}
+      ${insideChallengeNav}
     `;
+
+    // Hook up inside challenge navigation
+    const btnInsideChPrev = document.getElementById('btn-inside-challenge-prev');
+    const btnInsideChNext = document.getElementById('btn-inside-challenge-next');
+    if (btnInsideChPrev) {
+      btnInsideChPrev.onclick = () => {
+        if (index > 0) loadQuestion(index - 1);
+      };
+    }
+    if (btnInsideChNext) {
+      btnInsideChNext.onclick = () => {
+        if (isLastQuestion) {
+          submitAssessment();
+        } else {
+          loadQuestion(index + 1);
+        }
+      };
+    }
 
     // Toggle between Code Editor and MCQ Panel
     if (isMcq) {
@@ -525,6 +588,10 @@
 
     const options = q.options || [];
     const currentAnswer = state.candidateAnswers[q.id];
+    const { mcqs } = getQuestionSections();
+    const currIdx = state.currentQuestionIndex;
+    const isFirstMcq = currIdx === mcqs[0];
+    const isLastMcq = currIdx === mcqs[mcqs.length - 1];
 
     options.forEach((optText, idx) => {
       const isSelected = (currentAnswer !== undefined && (String(currentAnswer) === String(idx) || currentAnswer === optText));
@@ -549,6 +616,34 @@
 
       mcqOptionsContainer.appendChild(card);
     });
+
+    // Inside-page next/previous navigation card for MCQ
+    const insideMcqNav = document.createElement('div');
+    insideMcqNav.style.cssText = 'margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; width: 100%;';
+    insideMcqNav.innerHTML = `
+      <button type="button" class="btn-nav" id="btn-inside-mcq-prev" ${isFirstMcq ? 'disabled style="opacity: 0.4;"' : ''}>
+        ← Previous Question
+      </button>
+      <button type="button" class="btn-portal-primary" id="btn-inside-mcq-next" style="width: auto; padding: 10px 22px; font-size: 0.88rem; background: ${isLastMcq ? 'linear-gradient(135deg, #8b5cf6, #3b82f6)' : 'linear-gradient(135deg, #06b6d4, #3b82f6)'};">
+        ${isLastMcq ? 'Next: Section 2 (Hands-On Challenges) ➔' : 'Next Question ➔'}
+      </button>
+    `;
+    mcqOptionsContainer.appendChild(insideMcqNav);
+
+    const btnInsidePrev = insideMcqNav.querySelector('#btn-inside-mcq-prev');
+    const btnInsideNext = insideMcqNav.querySelector('#btn-inside-mcq-next');
+    if (btnInsidePrev && !isFirstMcq) {
+      btnInsidePrev.onclick = () => {
+        if (currIdx > 0) loadQuestion(currIdx - 1);
+      };
+    }
+    if (btnInsideNext) {
+      btnInsideNext.onclick = () => {
+        if (currIdx < state.questions.length - 1) {
+          loadQuestion(currIdx + 1);
+        }
+      };
+    }
   }
 
   function selectMcqOption(q, idx, optText) {
