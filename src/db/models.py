@@ -366,6 +366,18 @@ class CandidateAssessment(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Proctoring & Anti-Cheat Additions
+    access_token = Column(String(128), nullable=True, index=True)
+    otp_code = Column(String(10), nullable=True)
+    otp_expires_at = Column(DateTime(timezone=True), nullable=True)
+    strike_count = Column(Integer, default=0, nullable=False)
+    max_strikes = Column(Integer, default=3, nullable=False)
+    disqualification_reason = Column(Text, nullable=True)
+    proctoring_logs = Column(JSON, default=list, nullable=False)  # List of {timestamp, event_type, details, strike_added, snapshot_url}
+    integrity_score = Column(Integer, default=100, nullable=False)  # 0 - 100
+    snapshots_json = Column(JSON, default=list, nullable=False)  # List of captured frames with metadata
+    sandbox_results = Column(JSON, default=dict, nullable=False)  # Test case execution results
+
     job_opening = relationship("JobOpening", back_populates="assessments")
     candidate = relationship("Candidate")
 

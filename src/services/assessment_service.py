@@ -1,18 +1,21 @@
 import os
 import re
 import json
+from uuid import UUID
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 import litellm
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-class AssessmentQuestion(BaseModel):
-    id: str
-    type: str  # coding, debugging, architecture, code_review, system_design
-    title: str
-    prompt: str
-    code_snippet: Optional[str] = None
-    expected_topics: List[str] = Field(default_factory=list)
-    time_limit_minutes: int = 5
+from src.db.models import CandidateAssessment, Candidate, JobOpening
+from src.services.proctoring_service import ProctoringService
+from src.services.exam_catalog import (
+    AssessmentQuestion,
+    EXAM_TRACKS_20 as EXAM_TRACKS,
+    QUESTION_MODALITIES,
+)
 
 class AssessmentPackage(BaseModel):
     job_title: str
@@ -26,61 +29,133 @@ class AssessmentEvaluationResult(BaseModel):
     weaknesses: List[str] = Field(default_factory=list)
     feedback: str
 
-def _get_preset_questions(job_title: str, skills: List[str], duration_minutes: int) -> List[AssessmentQuestion]:
-    """Generates rigorous preset assessment questions based on primary skills."""
-    primary_skill = skills[0] if skills else "Python"
-    secondary_skill = skills[1] if len(skills) > 1 else "PostgreSQL"
 
-    q_pool = [
-        AssessmentQuestion(
-            id="q1_debug",
-            type="debugging",
-            title=f"Concurrency & Error Handling in {primary_skill}",
-            prompt=f"Identify the race condition or memory leak in the following {primary_skill} snippet and explain how you would remediate it.",
-            code_snippet=f"# Snippet: Unbounded async worker pool\nasync def process_batch(items):\n    tasks = [asyncio.create_task(handle_item(i)) for i in items]\n    return await asyncio.gather(*tasks)",
-            expected_topics=["Semaphore concurrency bounds", "Exception handling", "Memory leak prevention"],
-            time_limit_minutes=max(5, duration_minutes // 4)
-        ),
-        AssessmentQuestion(
-            id="q2_db",
-            type="architecture",
-            title=f"Database Query Optimization & Indexing in {secondary_skill}",
-            prompt=f"Given an applications table with 10M rows, explain how you would structure composite indexes and pagination to ensure p99 queries under 50ms.",
-            code_snippet="SELECT * FROM applications WHERE status = 'pending' ORDER BY created_at DESC LIMIT 50 OFFSET 200000;",
-            expected_topics=["Keyset cursor pagination vs offset", "Partial indexing", "Composite indexes (status, created_at)"],
-            time_limit_minutes=max(5, duration_minutes // 4)
-        ),
-        AssessmentQuestion(
-            id="q3_api",
-            type="code_review",
-            title="REST/GraphQL Idempotency & Security Audit",
-            prompt="Review this payment/webhook dispatch endpoint. Highlight vulnerabilities related to idempotency, replay attacks, and transaction rollbacks.",
-            code_snippet="POST /api/v1/billing/charge\nPayload: { candidate_id: '123', amount: 5000 }\nHandler charges customer then immediately updates status without idempotency key.",
-            expected_topics=["Idempotency keys", "Database transaction atomic commit", "Replay attack mitigation"],
-            time_limit_minutes=max(5, duration_minutes // 4)
-        ),
-        AssessmentQuestion(
-            id="q4_sysdesign",
-            type="system_design",
-            title="High-Throughput Resume Pipeline Architecture",
-            prompt="Design a resilient architecture capable of digesting 50,000 PDF resumes daily with rate-limited third-party APIs.",
-            code_snippet=None,
-            expected_topics=["Message broker (Kafka/RabbitMQ)", "Exponential backoff", "Dead-letter queues", "Worker autoscaling"],
-            time_limit_minutes=max(5, duration_minutes // 4)
-        )
+def get_exam_tracks_meta() -> List[Dict[str, Any]]:
+    """Returns summary metadata for all 20 available exam tracks with 5 challenge modalities each."""
+    return [
+        {
+            "track_id": data["track_id"],
+            "title": data["title"],
+            "badge": data["badge"],
+            "description": data["description"],
+            "skills": data["skills"],
+            "total_questions": len(data["questions"]),
+            "challenge_types": [
+                "Multiple Choice (MCQ - Core Concepts)",
+                "Multiple Choice (MCQ - Architecture)",
+                "Coding & DSA Challenge",
+                "Interactive SQL Query Challenge",
+                "Code Debugging & Threat Defense Challenge"
+            ],
+            "sections": [
+                "Section 1: Multiple Choice Questions (MCQs)",
+                "Section 2: Hands-On Challenges (Coding, SQL & Debugging)"
+            ]
+        }
+        for data in EXAM_TRACKS.values()
     ]
 
-    count_map = {10: 2, 20: 3, 30: 4, 60: 4}
-    target_count = count_map.get(duration_minutes, 3)
-    return q_pool[:target_count]
+
+def get_question_modalities() -> List[Dict[str, str]]:
+    """Returns the 10 customizable question modalities available across the platform."""
+    return QUESTION_MODALITIES
+
+
+def get_questions_for_track(track_id: str) -> List[AssessmentQuestion]:
+    """Retrieve full AssessmentQuestion objects for the specified track."""
+    track = EXAM_TRACKS.get(track_id) or EXAM_TRACKS.get("software_engineer")
+    return list(track["questions"])
+
+
+def detect_exam_track(job_title: str, required_skills: Optional[List[str]] = None) -> str:
+    """Infers the most appropriate exam track from job title and required skills across 20 roles."""
+    t = (job_title or "").lower()
+    s = [x.lower() for x in (required_skills or [])]
+
+    # Specific role checks
+    if any(k in t for k in ["blockchain", "web3", "solidity", "smart contract", "crypto", "ethereum", "defi"]):
+        return "blockchain_engineer"
+    if any(k in t for k in ["embedded", "firmware", "iot", "rtos", "microcontroller", "hardware"]):
+        return "embedded_iot_engineer"
+    if any(k in t for k in ["nlp", "llm", "large language model", "rag", "genai"]):
+        return "nlp_engineer"
+    if any(k in t for k in ["computer vision", "vision", "opencv", "yolo", "cnn", "image processing"]):
+        return "computer_vision_engineer"
+    if any(k in t for k in ["dba", "database administrator", "database engineer", "postgres admin", "oracle"]):
+        return "database_administrator"
+    if any(k in t for k in ["cloud architect", "solutions architect", "enterprise architect", "aws architect"]):
+        return "cloud_architect"
+    if any(k in t for k in ["platform", "developer experience", "internal platform", "gitops"]):
+        return "platform_engineer"
+    if any(k in t for k in ["data scientist", "data science", "statistician", "econometrician"]):
+        return "data_scientist"
+    if any(k in t for k in ["integration engineer", "api engineer", "partner engineer", "solutions engineer"]):
+        return "api_integrations_engineer"
+    if any(k in t for k in ["game", "game developer", "graphics", "unreal", "unity", "vulkan", "shader"]):
+        return "game_developer"
+    if any(k in t for k in ["security", "cyber", "infosec", "appsec", "penetration", "soc"]):
+        return "security_engineer"
+    if any(k in t for k in ["analyst", "business intelligence", "tableau", "power bi", "bi analyst"]):
+        return "data_analyst"
+    if any(k in t for k in ["qa", "sdet", "test automation", "tester", "quality engineer"]):
+        return "qa_automation_engineer"
+    if any(k in t for k in ["mobile", "ios", "android", "swift", "kotlin", "flutter", "react native"]):
+        return "mobile_engineer"
+    if any(k in t for k in ["fullstack", "full stack", "full-stack", "mern", "mean"]):
+        return "fullstack_engineer"
+    if any(k in t for k in ["data engineer", "etl", "data warehouse", "pipeline"]):
+        return "data_engineer"
+    if any(k in t for k in ["frontend", "front end", "react", "ui", "web engineer", "angular", "vue"]):
+        return "frontend_engineer"
+    if any(k in t for k in ["machine learning", "ml engineer", "deep learning", "ai engineer"]):
+        return "ml_engineer"
+    if any(k in t for k in ["devops", "sre", "site reliability", "cloud engineer", "infra"]):
+        return "devops_sre"
+
+    # Skills-based inference if title is generic
+    if any(k in s for k in ["solidity", "web3", "smart contracts"]): return "blockchain_engineer"
+    if any(k in s for k in ["c++", "rtos", "embedded", "i2c", "spi"]): return "embedded_iot_engineer"
+    if any(k in s for k in ["llm", "rag", "langchain", "embeddings"]): return "nlp_engineer"
+    if any(k in s for k in ["opencv", "yolo", "torchvision"]): return "computer_vision_engineer"
+    if any(k in s for k in ["postgres", "mysql", "indexing", "wal"]): return "database_administrator"
+    if any(k in s for k in ["terraform", "aws", "gcp", "architecture"]): return "cloud_architect"
+    if any(k in s for k in ["argocd", "helm", "gitops"]): return "platform_engineer"
+    if any(k in s for k in ["a/b testing", "statistics", "scikit-learn"]): return "data_scientist"
+    if any(k in s for k in ["oauth2", "webhooks", "rest"]): return "api_integrations_engineer"
+    if any(k in s for k in ["unity", "unreal", "opengl"]): return "game_developer"
+    if any(k in s for k in ["owasp", "cryptography", "appsec"]): return "security_engineer"
+    if any(k in s for k in ["tableau", "powerbi", "sql analytics"]): return "data_analyst"
+    if any(k in s for k in ["selenium", "playwright", "cypress", "pytest"]): return "qa_automation_engineer"
+    if any(k in s for k in ["swift", "kotlin", "flutter"]): return "mobile_engineer"
+    if any(k in s for k in ["sql", "etl", "spark", "hadoop", "bigquery"]): return "data_engineer"
+    if any(k in s for k in ["react", "css", "html", "vue", "javascript"]): return "frontend_engineer"
+    if any(k in s for k in ["pytorch", "tensorflow", "keras"]): return "ml_engineer"
+    if any(k in s for k in ["kubernetes", "docker", "ansible"]): return "devops_sre"
+    if any(k in s for k in ["node", "express", "django", "fastapi"]) and any(k in s for k in ["react", "vue"]): return "fullstack_engineer"
+
+    return "software_engineer"
+
+
+def _get_preset_questions(
+    job_title: str,
+    skills: List[str],
+    duration_minutes: int,
+    role_track: Optional[str] = None
+) -> List[AssessmentQuestion]:
+    """Resolves questions for the requested or auto-detected exam track."""
+    track_key = role_track or detect_exam_track(job_title, skills)
+    track = EXAM_TRACKS.get(track_key, EXAM_TRACKS["software_engineer"])
+    return track["questions"]
+
 
 def generate_technical_assessment(
     job_title: str,
     required_skills: List[str],
-    duration_minutes: int = 30
+    duration_minutes: int = 30,
+    role_track: Optional[str] = None
 ) -> AssessmentPackage:
-    """Generates a customized technical assessment tailored to JD requirements and duration."""
-    questions = _get_preset_questions(job_title, required_skills, duration_minutes)
+    """Generates a customized technical assessment tailored to role track and JD."""
+    questions = _get_preset_questions(job_title, required_skills, duration_minutes, role_track)
     return AssessmentPackage(
         job_title=job_title,
         duration_minutes=duration_minutes,
@@ -88,11 +163,13 @@ def generate_technical_assessment(
         questions=questions
     )
 
+
 def evaluate_assessment_submission(
     questions: List[Dict[str, Any]],
-    answers: Dict[str, str]
+    answers: Dict[str, str],
+    sandbox_results: Optional[Dict[str, Any]] = None
 ) -> AssessmentEvaluationResult:
-    """Evaluates candidate answers against expected engineering topics and constructs scorecard."""
+    """Evaluates candidate answers against engineering topics, MCQs, and sandbox test pass rates."""
     total_score = 0
     strengths = []
     weaknesses = []
@@ -109,9 +186,69 @@ def evaluate_assessment_submission(
 
     for q in questions:
         q_id = q.get("id")
-        ans = answers.get(q_id, "").strip()
+        ans = str(answers.get(q_id, "")).strip()
         expected = q.get("expected_topics", [])
+        q_type = q.get("type", "coding")
 
+        # 1. Evaluate Multiple Choice Questions (MCQ)
+        if q_type == "mcq" or q.get("options"):
+            correct_idx = q.get("correct_option")
+            options = q.get("options", [])
+            is_correct = False
+            if correct_idx is not None and 0 <= correct_idx < len(options):
+                expected_opt = options[correct_idx]
+                clean_ans = ans.lower()
+                clean_exp = expected_opt.lower()
+
+                # Matches by index (e.g. "2" or 2)
+                if clean_ans == str(correct_idx):
+                    is_correct = True
+                # Matches by full option text
+                elif clean_ans == clean_exp:
+                    is_correct = True
+                # Matches by option letter prefix (e.g. "c" or "c)")
+                elif len(clean_ans) <= 2 and clean_ans == clean_exp[:2].strip().replace(")", ""):
+                    is_correct = True
+                # Substring match if candidate typed option body
+                elif len(clean_ans) > 3 and (clean_ans in clean_exp or clean_exp in clean_ans):
+                    is_correct = True
+
+            if is_correct:
+                total_score += points_per_question
+                strengths.append(f"Correctly answered MCQ: '{q.get('title')}'.")
+            else:
+                weaknesses.append(f"Incorrect answer for MCQ: '{q.get('title')}'.")
+            continue
+
+        # 2. Check if we have sandbox test results for this question
+        sb_for_q = (sandbox_results or {}).get(q_id) if sandbox_results else None
+        if not sb_for_q and q.get("test_cases") and ans:
+            try:
+                from src.services.sandbox_service import SandboxService
+                lang = "sql" if q.get("type") == "sql" or q.get("section") == "sql" else "python"
+                run_res = SandboxService.execute_code(
+                    language=lang,
+                    code=ans,
+                    test_cases=q.get("test_cases", [])
+                )
+                sb_for_q = run_res.model_dump()
+            except Exception:
+                pass
+
+        if sb_for_q and sb_for_q.get("total_tests", 0) > 0:
+            pass_ratio = sb_for_q.get("tests_passed", 0) / sb_for_q.get("total_tests", 1)
+            q_score = int(points_per_question * pass_ratio)
+            total_score += q_score
+            if pass_ratio == 1.0:
+                strengths.append(f"Passed all automated sandbox test cases for '{q.get('title')}'.")
+            elif pass_ratio > 0:
+                strengths.append(f"Passed {sb_for_q.get('tests_passed')}/{sb_for_q.get('total_tests')} test cases for '{q.get('title')}'.")
+                weaknesses.append(f"Some test cases failed for '{q.get('title')}'.")
+            else:
+                weaknesses.append(f"Failed sandbox test cases for '{q.get('title')}'.")
+            continue
+
+        # Otherwise evaluate code/text topics
         if not ans or len(ans) < 20:
             weaknesses.append(f"Incomplete response for {q.get('title')}.")
             continue
@@ -128,23 +265,17 @@ def evaluate_assessment_submission(
 
     final_score = min(100, max(15, total_score))
     feedback = (
-        f"Candidate achieved {final_score}/100 across {len(questions)} technical problems. "
-        f"{'Strong architectural fundamentals demonstrated.' if final_score >= 75 else 'Moderate technical demonstration; review edge cases.'}"
+        f"Candidate achieved {final_score}/100 across {len(questions)} technical challenges. "
+        f"{'Demonstrated strong engineering problem-solving and code execution.' if final_score >= 75 else 'Moderate performance; check edge cases and error boundaries.'}"
     )
 
     return AssessmentEvaluationResult(
         score=final_score,
-        strengths=strengths or ["General comprehension of core engineering principles."],
-        weaknesses=weaknesses or ["Minor omissions in edge case failure recovery."],
+        strengths=strengths or ["Solid code submission and engineering approach."],
+        weaknesses=weaknesses or ["Minor omissions in edge case handling."],
         feedback=feedback
     )
 
-
-from uuid import UUID
-from datetime import datetime, timezone
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.models import CandidateAssessment, Candidate, JobOpening
 
 class AssessmentService:
     def __init__(self, db: AsyncSession, org_id: UUID):
@@ -172,6 +303,8 @@ class AssessmentService:
         skills = list(set((candidate.tags or ["Python", "PostgreSQL", "Docker"]) + job_skills))
         pkg = generate_technical_assessment(job_title=job_title, required_skills=skills, duration_minutes=duration_minutes)
 
+        token, otp, expires_at = ProctoringService.generate_invite_credentials()
+
         assessment = CandidateAssessment(
             organization_id=self.org_id,
             job_id=job_id,
@@ -179,7 +312,16 @@ class AssessmentService:
             duration_minutes=duration_minutes,
             status="pending",
             questions_json=[q.model_dump() for q in pkg.questions],
-            answers_json={}
+            answers_json={},
+            access_token=token,
+            otp_code=otp,
+            otp_expires_at=expires_at,
+            strike_count=0,
+            max_strikes=3,
+            integrity_score=100,
+            proctoring_logs=[],
+            snapshots_json=[],
+            sandbox_results={}
         )
         self.db.add(assessment)
         await self.db.commit()
@@ -198,8 +340,21 @@ class AssessmentService:
         if not assessment:
             raise ValueError("Assessment not found.")
 
+        # If already disqualified due to proctoring violations, keep score 0
+        if assessment.status == "integrity_disqualified":
+            assessment.answers_json = answers
+            assessment.score = 0
+            assessment.completed_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            await self.db.refresh(assessment)
+            return assessment
+
         questions = assessment.questions_json or []
-        eval_result = evaluate_assessment_submission(questions=questions, answers=answers)
+        eval_result = evaluate_assessment_submission(
+            questions=questions,
+            answers=answers,
+            sandbox_results=assessment.sandbox_results
+        )
 
         assessment.answers_json = answers
         assessment.score = eval_result.score

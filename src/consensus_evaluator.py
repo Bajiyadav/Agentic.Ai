@@ -53,8 +53,8 @@ def run_consensus_evaluation(
         min_experience=min_experience
     )
 
-    # 🚨 VALIDATION GATE: If document is invalid or baseline score is 0, halt consensus immediately!
-    if not getattr(claims, "is_valid_resume", True) or baseline.overall_score == 0:
+    # 🚨 VALIDATION GATE: If document is structurally invalid, halt consensus immediately!
+    if not getattr(claims, "is_valid_resume", True):
         baseline.overall_score = 0
         baseline.skills_match_score = 0
         baseline.code_quality_score = 0
@@ -68,6 +68,25 @@ def run_consensus_evaluation(
             consensus_notes=[
                 "Validation Gate Halted: Uploaded document is NOT a valid professional resume/CV.",
                 f"Classification: {getattr(claims, 'document_type', 'UNRELATED_DOCUMENT')}"
+            ],
+            model_votes={
+                "Rule Engine": 0,
+                "Qwen 2.5 Coder": 0,
+                "Nemotron 3": 0
+            }
+        )
+
+    # If valid resume scored 0 on baseline rules, halt with REJECT verdict without invalidating document
+    if baseline.overall_score == 0:
+        baseline.recommendation = "REJECT"
+        return ConsensusResult(
+            scorecard=baseline,
+            confidence_level="HIGH",
+            needs_manual_review=False,
+            variance_points=0,
+            consensus_notes=[
+                "Rule Engine Baseline: Evaluated candidate quality score as 0/100 (REJECT).",
+                "Resume is structurally valid but lacks requisite technical qualifications or experience."
             ],
             model_votes={
                 "Rule Engine": 0,

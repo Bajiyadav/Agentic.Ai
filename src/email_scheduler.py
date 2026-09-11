@@ -53,6 +53,7 @@ class EmailBackgroundScheduler:
 
     def get_status(self) -> Dict[str, Any]:
         return {
+            "status": "running" if self.is_running else "stopped",
             "is_active": self.is_running,
             "interval_minutes": self.interval_seconds // 60,
             "total_sweeps": self.total_sweeps,

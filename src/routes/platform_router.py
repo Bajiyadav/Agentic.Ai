@@ -1,7 +1,8 @@
+import os
 import uuid
 import logging
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -14,17 +15,38 @@ from src.db.models import (
     TechnicalInterview, PipelineStage, Candidate, Audit
 )
 from src.services.jd_service import JobDescriptionService
-from src.services.evidence_graph_service import CandidateEvidenceGraphService
-from src.services.assessment_service import AssessmentService
-from src.services.interview_service import TechnicalInterviewService
+from src.services.assessment_service import (
+    AssessmentService, get_exam_tracks_meta, get_question_modalities, EXAM_TRACKS
+)
 from src.services.copilot_service import RecruiterCopilotService
 from src.services.comparison_service import CandidateComparisonService
 from src.services.pipeline_service import PipelineService, ALLOWED_STAGES
 from src.services.analytics_service import RecruitmentAnalyticsEngine
+from src.services.sandbox_service import SandboxService
+from src.services.proctoring_service import ProctoringService, ProctorTelemetryPayload, ProctorCheckResult
 
 logger = logging.getLogger("auditagent.platform_router")
 
 router = APIRouter(prefix="/api/v1", tags=["Enterprise Platform"])
+
+def build_assessment_invite_url(
+    assessment_id: uuid.UUID,
+    access_token: str,
+    request: Optional[Request] = None,
+    override_base: Optional[str] = None
+) -> str:
+    """Builds a fully-qualified link for the assessment using custom domain, APP_BASE_URL, or request origin."""
+    base = (override_base or "").strip().rstrip("/")
+    if not base:
+        app_env_base = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
+        if app_env_base and "mycompany.com" not in app_env_base:
+            base = app_env_base
+        elif request:
+            base = str(request.base_url).rstrip("/")
+        else:
+            base = app_env_base or "http://localhost:8000"
+    path = f"/assessment.html?id={assessment_id}&token={access_token}"
+    return f"{base}{path}" if base else path
 
 # -------------------------------------------------------------
 # Schemas
@@ -40,9 +62,36 @@ class AssessmentGenerateRequest(BaseModel):
     candidate_id: uuid.UUID
     job_id: Optional[uuid.UUID] = None
     duration_minutes: int = Field(default=30, examples=[30])  # 10, 20, 30, 60
+    custom_domain: Optional[str] = Field(default=None, description="Optional custom public domain/base URL (e.g. https://careers.mycompany.com)")
+
 
 class AssessmentSubmitRequest(BaseModel):
     answers: Dict[str, str] = Field(..., examples=[{"q1": "We use SELECT FOR UPDATE...", "q2": "CREATE INDEX CONCURRENTLY..."}])
+
+class CandidateVerifyOtpRequest(BaseModel):
+    otp_or_token: str = Field(..., examples=["123456"])
+
+class ProctorHeartbeatRequest(BaseModel):
+    snapshot_base64: Optional[str] = None
+    audio_level_rms: Optional[float] = 0.0
+    audio_peak_hz: Optional[float] = None
+    token: Optional[str] = None
+
+class ProctorViolationRequest(BaseModel):
+    event_type: str = Field(..., examples=["copy_paste_attempt", "tab_blur", "fullscreen_exit"])
+    details: Optional[str] = None
+    snapshot_base64: Optional[str] = None
+    token: Optional[str] = None
+
+class SandboxRunRequest(BaseModel):
+    question_id: str = Field(..., examples=["q1_algo"])
+    language: str = Field(default="python", examples=["python", "javascript", "go", "java"])
+    code: str = Field(..., examples=["def solution(requests, limit, window_size):\n    return 4"])
+    token: Optional[str] = None
+
+class CandidateSubmitRequest(BaseModel):
+    answers: Dict[str, str] = Field(..., examples=[{"q1_algo": "def solution(...)"}])
+    token: Optional[str] = None
 
 class InterviewStartRequest(BaseModel):
     candidate_id: uuid.UUID
@@ -241,9 +290,14 @@ async def get_candidate_evidence_graph(
 # 3. Technical Assessments (10, 20, 30, 60m)
 # -------------------------------------------------------------
 
+# -------------------------------------------------------------
+# 3. Technical Assessments (AI Proctored with Multi-Language Sandbox)
+# -------------------------------------------------------------
+
 @router.post("/assessments/generate")
 async def generate_assessment(
     req: AssessmentGenerateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     tenant: TenantContext = Depends(get_tenant_or_demo_context)
 ):
@@ -255,6 +309,9 @@ async def generate_assessment(
             job_id=req.job_id,
             duration_minutes=req.duration_minutes
         )
+        invite_url = build_assessment_invite_url(
+            assessment.id, assessment.access_token, request=request, override_base=req.custom_domain
+        )
         return {
             "id": str(assessment.id),
             "candidate_id": str(assessment.candidate_id),
@@ -262,10 +319,348 @@ async def generate_assessment(
             "status": assessment.status,
             "questions": assessment.questions_json,
             "problem_set": assessment.questions_json,
+            "access_token": assessment.access_token,
+            "otp_code": assessment.otp_code,
+            "invite_url": invite_url,
+            "strike_count": assessment.strike_count,
+            "max_strikes": assessment.max_strikes,
+            "integrity_score": assessment.integrity_score,
             "created_at": assessment.created_at.isoformat()
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/assessments/{assessment_id}/invite")
+async def get_or_create_candidate_invite(
+    assessment_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant: TenantContext = Depends(get_tenant_or_demo_context)
+):
+    """Generates / retrieves secure magic link and 6-digit OTP for candidate."""
+    stmt = select(CandidateAssessment).where(
+        CandidateAssessment.id == assessment_id,
+        CandidateAssessment.organization_id == tenant.organization_id
+    )
+    res = await db.execute(stmt)
+    ass = res.scalar_one_or_none()
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+
+    if not ass.access_token or not ass.otp_code:
+        token, otp, expires_at = ProctoringService.generate_invite_credentials()
+        ass.access_token = token
+        ass.otp_code = otp
+        ass.otp_expires_at = expires_at
+        await db.commit()
+        await db.refresh(ass)
+
+    invite_url = build_assessment_invite_url(ass.id, ass.access_token, request=request)
+    return {
+        "assessment_id": str(ass.id),
+        "candidate_id": str(ass.candidate_id),
+        "invite_url": invite_url,
+        "access_token": ass.access_token,
+        "otp_code": ass.otp_code,
+        "otp_expires_at": ass.otp_expires_at.isoformat() if ass.otp_expires_at else None,
+        "status": ass.status
+    }
+
+@router.get("/assessments/demo/active-link")
+async def get_active_demo_assessment_link(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant: TenantContext = Depends(get_tenant_or_demo_context)
+):
+    """Returns the latest active assessment link or generates one for instant live testing."""
+    stmt = select(CandidateAssessment).where(
+        CandidateAssessment.organization_id == tenant.organization_id
+    ).order_by(desc(CandidateAssessment.created_at)).limit(1)
+    res = await db.execute(stmt)
+    ass = res.scalar_one_or_none()
+
+    if not ass or not ass.access_token:
+        c_stmt = select(Candidate).where(Candidate.organization_id == tenant.organization_id).limit(1)
+        c_res = await db.execute(c_stmt)
+        cand = c_res.scalar_one_or_none()
+        if not cand:
+            cand = Candidate(
+                organization_id=tenant.organization_id,
+                name="Alice Engineer",
+                email="alice.engineer@example.com",
+                tags=["Python", "PostgreSQL", "Docker"]
+            )
+            db.add(cand)
+            await db.commit()
+            await db.refresh(cand)
+
+        ass_svc = AssessmentService(db, tenant.organization_id)
+        ass = await ass_svc.generate_assessment(candidate_id=cand.id, duration_minutes=30)
+
+    invite_url = build_assessment_invite_url(ass.id, ass.access_token, request=request)
+    return {
+        "assessment_id": str(ass.id),
+        "candidate_id": str(ass.candidate_id),
+        "access_token": ass.access_token,
+        "otp_code": ass.otp_code,
+        "invite_url": invite_url
+    }
+
+@router.post("/assessments/{assessment_id}/verify-otp")
+async def verify_candidate_otp(
+    assessment_id: uuid.UUID,
+    req: CandidateVerifyOtpRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Candidate portal authentication via 6-digit OTP or magic link token."""
+    stmt = select(CandidateAssessment, Candidate).join(
+        Candidate, CandidateAssessment.candidate_id == Candidate.id
+    ).where(CandidateAssessment.id == assessment_id)
+    res = await db.execute(stmt)
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+    ass, cand = row
+
+    if not ProctoringService.verify_credentials(ass, req.otp_or_token):
+        raise HTTPException(status_code=401, detail="Invalid or expired OTP / Access Token.")
+
+    # Activate assessment if pending
+    if ass.status == "pending":
+        ass.status = "in_progress"
+        await db.commit()
+        await db.refresh(ass)
+
+    return {
+        "verified": True,
+        "assessment_id": str(ass.id),
+        "candidate_name": cand.name,
+        "candidate_email": cand.email,
+        "duration_minutes": ass.duration_minutes,
+        "status": ass.status,
+        "strike_count": ass.strike_count,
+        "max_strikes": ass.max_strikes,
+        "token": ass.access_token
+    }
+
+@router.get("/assessments/tracks")
+async def get_available_exam_tracks():
+    """Returns metadata for all 20 role-specific exam tracks."""
+    return {
+        "tracks": get_exam_tracks_meta()
+    }
+
+@router.get("/assessments/modalities")
+async def get_assessment_modalities():
+    """Returns the 10 customizable question modalities available across exams."""
+    return {
+        "modalities": get_question_modalities()
+    }
+
+@router.get("/assessments/{assessment_id}/candidate-view")
+async def get_candidate_assessment_view(
+    assessment_id: uuid.UUID,
+    token: Optional[str] = None,
+    role: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Candidate view for taking the assessment in the standalone portal."""
+    stmt = select(CandidateAssessment, Candidate, JobOpening).join(
+        Candidate, CandidateAssessment.candidate_id == Candidate.id
+    ).outerjoin(
+        JobOpening, CandidateAssessment.job_id == JobOpening.id
+    ).where(CandidateAssessment.id == assessment_id)
+    res = await db.execute(stmt)
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+    ass, cand, job = row
+
+    # Validate token if set
+    if token and not ProctoringService.verify_credentials(ass, token):
+        raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+
+    # Select question source: role-specific override or saved assessment questions
+    questions_source = ass.questions_json or []
+    if role and role in EXAM_TRACKS:
+        questions_source = [q.model_dump() for q in EXAM_TRACKS[role]["questions"]]
+    elif not questions_source:
+        questions_source = [q.model_dump() for q in EXAM_TRACKS["software_engineer"]["questions"]]
+
+    # Filter out internal/hidden fields from questions
+    sanitized_questions = []
+    for q in questions_source:
+        tc_sanitized = [
+            {"input_data": tc.get("input_data"), "expected_output": tc.get("expected_output"), "description": tc.get("description"), "setup_sql": tc.get("setup_sql")}
+            for tc in q.get("test_cases", [])
+            if not tc.get("hidden", False)
+        ]
+        sanitized_questions.append({
+            "id": q.get("id"),
+            "type": q.get("type"),
+            "section": q.get("section", "mcq"),
+            "section_title": q.get("section_title", "Section 1: Multiple Choice Questions (MCQs)"),
+            "title": q.get("title"),
+            "prompt": q.get("prompt"),
+            "options": q.get("options", []),
+            "code_snippet": q.get("code_snippet"),
+            "starter_code": q.get("starter_code", {}),
+            "test_cases": tc_sanitized,
+            "time_limit_minutes": q.get("time_limit_minutes", 10),
+            "db_schema_setup": q.get("db_schema_setup")
+        })
+
+    job_title = job.title if job else "Technical Engineer"
+    if role and role in EXAM_TRACKS:
+        job_title = EXAM_TRACKS[role]["title"]
+
+    return {
+        "id": str(ass.id),
+        "candidate_name": cand.name,
+        "job_title": job_title,
+        "role_track": role or "software_engineer",
+        "duration_minutes": ass.duration_minutes,
+        "status": ass.status,
+        "strike_count": ass.strike_count,
+        "max_strikes": ass.max_strikes,
+        "integrity_score": ass.integrity_score,
+        "disqualification_reason": ass.disqualification_reason,
+        "questions": sanitized_questions,
+        "sandbox_results": ass.sandbox_results or {}
+    }
+
+@router.post("/assessments/{assessment_id}/proctor/heartbeat")
+async def proctor_heartbeat(
+    assessment_id: uuid.UUID,
+    req: ProctorHeartbeatRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Processes candidate periodic webcam snapshot & audio volume telemetry."""
+    stmt = select(CandidateAssessment).where(CandidateAssessment.id == assessment_id)
+    res = await db.execute(stmt)
+    ass = res.scalar_one_or_none()
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+
+    if req.token and not ProctoringService.verify_credentials(ass, req.token):
+        raise HTTPException(status_code=401, detail="Invalid access token.")
+
+    payload = ProctorTelemetryPayload(
+        snapshot_base64=req.snapshot_base64,
+        audio_level_rms=req.audio_level_rms,
+        audio_peak_hz=req.audio_peak_hz,
+        event_type="periodic_heartbeat"
+    )
+    result = ProctoringService.evaluate_telemetry(ass, payload)
+    await db.commit()
+    await db.refresh(ass)
+    return result.model_dump()
+
+@router.post("/assessments/{assessment_id}/proctor/violation")
+async def proctor_violation(
+    assessment_id: uuid.UUID,
+    req: ProctorViolationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Handles explicit client-side violations (copy/paste attempt, tab switch, fullscreen exit)."""
+    stmt = select(CandidateAssessment).where(CandidateAssessment.id == assessment_id)
+    res = await db.execute(stmt)
+    ass = res.scalar_one_or_none()
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+
+    if req.token and not ProctoringService.verify_credentials(ass, req.token):
+        raise HTTPException(status_code=401, detail="Invalid access token.")
+
+    payload = ProctorTelemetryPayload(
+        snapshot_base64=req.snapshot_base64,
+        event_type=req.event_type,
+        details=req.details
+    )
+    result = ProctoringService.evaluate_telemetry(ass, payload)
+    await db.commit()
+    await db.refresh(ass)
+    return result.model_dump()
+
+@router.post("/assessments/{assessment_id}/sandbox/run")
+async def run_sandbox_code(
+    assessment_id: uuid.UUID,
+    req: SandboxRunRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Executes candidate code in isolated server-side sandbox against question test cases."""
+    stmt = select(CandidateAssessment).where(CandidateAssessment.id == assessment_id)
+    res = await db.execute(stmt)
+    ass = res.scalar_one_or_none()
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+
+    if req.token and not ProctoringService.verify_credentials(ass, req.token):
+        raise HTTPException(status_code=401, detail="Invalid access token.")
+
+    if ass.status == "integrity_disqualified":
+        raise HTTPException(status_code=403, detail="Assessment has been terminated due to integrity violations.")
+
+    # Find test cases for the target question
+    test_cases = []
+    for q in (ass.questions_json or []):
+        if q.get("id") == req.question_id:
+            test_cases = q.get("test_cases", [])
+            break
+
+    if not test_cases:
+        for track_data in EXAM_TRACKS.values():
+            for q_obj in track_data.get("questions", []):
+                if q_obj.id == req.question_id:
+                    test_cases = [tc if isinstance(tc, dict) else tc.model_dump() for tc in q_obj.test_cases]
+                    break
+            if test_cases:
+                break
+
+    run_res = SandboxService.execute_code(
+        language=req.language,
+        code=req.code,
+        test_cases=test_cases
+    )
+
+    # Cache execution results
+    results_map = dict(ass.sandbox_results or {})
+    results_map[req.question_id] = run_res.model_dump()
+    ass.sandbox_results = results_map
+    await db.commit()
+
+    return run_res.model_dump()
+
+@router.post("/assessments/{assessment_id}/candidate-submit")
+async def candidate_submit_assessment(
+    assessment_id: uuid.UUID,
+    req: CandidateSubmitRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Candidate finishes and submits all answers from the standalone portal."""
+    stmt = select(CandidateAssessment).where(CandidateAssessment.id == assessment_id)
+    res = await db.execute(stmt)
+    ass = res.scalar_one_or_none()
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+
+    if req.token and not ProctoringService.verify_credentials(ass, req.token):
+        raise HTTPException(status_code=401, detail="Invalid access token.")
+
+    ass_svc = AssessmentService(db, ass.organization_id)
+    graded = await ass_svc.evaluate_submission(ass.id, req.answers)
+    return {
+        "id": str(graded.id),
+        "score": graded.score,
+        "integrity_score": graded.integrity_score,
+        "strike_count": graded.strike_count,
+        "status": graded.status,
+        "passed": (graded.score or 0) >= 70 and graded.status != "integrity_disqualified",
+        "strengths": graded.strengths,
+        "weaknesses": graded.weaknesses,
+        "feedback": graded.feedback,
+        "completed_at": graded.completed_at.isoformat() if graded.completed_at else None
+    }
 
 @router.post("/assessments/{assessment_id}/submit")
 async def submit_assessment(
@@ -274,7 +669,7 @@ async def submit_assessment(
     db: AsyncSession = Depends(get_db),
     tenant: TenantContext = Depends(get_tenant_or_demo_context)
 ):
-    """Grades submitted assessment answers with automated technical rubric."""
+    """Grades submitted assessment answers with automated technical rubric (Recruiter API)."""
     ass_svc = AssessmentService(db, tenant.organization_id)
     try:
         graded = await ass_svc.evaluate_submission(assessment_id, req.answers)
@@ -296,6 +691,7 @@ async def submit_assessment(
 @router.get("/assessments/{assessment_id}")
 async def get_assessment(
     assessment_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     tenant: TenantContext = Depends(get_tenant_or_demo_context)
 ):
@@ -316,9 +712,54 @@ async def get_assessment(
         "questions": ass.questions_json,
         "answers": ass.answers_json,
         "score": ass.score,
+        "strike_count": ass.strike_count,
+        "max_strikes": ass.max_strikes,
+        "integrity_score": ass.integrity_score,
+        "disqualification_reason": ass.disqualification_reason,
+        "access_token": ass.access_token,
+        "otp_code": ass.otp_code,
+        "invite_url": build_assessment_invite_url(ass.id, ass.access_token, request=request),
         "strengths": ass.strengths,
         "weaknesses": ass.weaknesses,
         "feedback": ass.feedback
+    }
+
+@router.get("/assessments/{assessment_id}/proctor/audit")
+async def get_assessment_proctor_audit(
+    assessment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant: TenantContext = Depends(get_tenant_or_demo_context)
+):
+    """Recruiter audit report of proctoring violations, strikes, timeline, and snapshots."""
+    stmt = select(CandidateAssessment, Candidate).join(
+        Candidate, CandidateAssessment.candidate_id == Candidate.id
+    ).where(
+        CandidateAssessment.id == assessment_id,
+        CandidateAssessment.organization_id == tenant.organization_id
+    )
+    res = await db.execute(stmt)
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+    ass, cand = row
+
+    return {
+        "assessment_id": str(ass.id),
+        "candidate_id": str(cand.id),
+        "candidate_name": cand.name,
+        "candidate_email": cand.email,
+        "status": ass.status,
+        "technical_score": ass.score,
+        "integrity_score": ass.integrity_score,
+        "strike_count": ass.strike_count,
+        "max_strikes": ass.max_strikes,
+        "is_disqualified": ass.status == "integrity_disqualified",
+        "disqualification_reason": ass.disqualification_reason,
+        "proctoring_logs": ass.proctoring_logs or [],
+        "snapshots": ass.snapshots_json or [],
+        "sandbox_results": ass.sandbox_results or {},
+        "created_at": ass.created_at.isoformat(),
+        "completed_at": ass.completed_at.isoformat() if ass.completed_at else None
     }
 
 

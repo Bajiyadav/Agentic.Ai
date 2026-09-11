@@ -49,16 +49,27 @@ def run_screening_pipeline(
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"Resume PDF file not found at: {pdf_path}")
 
-    # Step 1: Agent 1 - Resume Parser
-    with console.status("[bold blue]📋 [Agent 1] Parsing Candidate Resume PDF...", spinner="dots"):
-        claims = parse_resume(pdf_path)
+    # Delegate to Unified Single Screening Pipeline (Single Source of Truth)
+    from src.services.screening_service import execute_screening_pipeline_core
+    with console.status("[bold blue]📋 Screening candidate using unified pipeline...", spinner="dots"):
+        res = execute_screening_pipeline_core(
+            file_path=pdf_path,
+            github_user_override=github_username,
+            required_skills=required_skills,
+            target_role=target_role,
+            min_experience=min_experience
+        )
+
+    claims = res["claims_obj"]
+    evidence = res["evidence_obj"]
+    scorecard = res["scorecard_obj"]
 
     # 🚨 UPFRONT VALIDATION GATE: Early termination for invalid files
-    if not getattr(claims, "is_valid_resume", True):
+    if not res["is_valid_resume"]:
         console.print()
         console.print(Panel.fit(
             f"[bold red]❌ INVALID DOCUMENT DETECTED[/bold red]\n\n"
-            f"[bold]Detected Type:[/bold] {getattr(claims, 'document_type', 'ACADEMIC_LAB_OR_EXERCISE')}\n"
+            f"[bold]Detected Type:[/bold] {res['document_type']}\n"
             f"[bold]Verdict:[/bold] [red bold]REJECT (Score: 0/100)[/red bold]\n\n"
             f"[dim]The uploaded file does not appear to be a professional resume/CV.\n"
             f"Pipeline halted early: skipped GitHub code audit, skipped LLM evaluations.\n"
@@ -67,32 +78,6 @@ def run_screening_pipeline(
             border_style="red"
         ))
         console.print()
-        evidence = GitHubEvidence(
-            username="none",
-            profile_found=False,
-            audit_notes=["Audit halted: document is not a valid resume."]
-        )
-        scorecard = ScreeningScorecard(
-            candidate_name=claims.name,
-            github_username="none",
-            target_role=target_role,
-            overall_score=0,
-            skills_match_score=0,
-            code_quality_score=0,
-            consistency_score=0,
-            company_skills_match_score=0 if required_skills else None,
-            recommendation="REJECT",
-            red_flags=[
-                "CRITICAL: Uploaded document is NOT a valid professional resume/CV.",
-                f"Classification: {getattr(claims, 'document_type', 'ACADEMIC_LAB_OR_EXERCISE')}."
-            ] + getattr(claims, "validation_flags", []),
-            green_flags=[],
-            executive_summary=(
-                f"Screening HALTED: The uploaded file for '{claims.name}' does not appear to be a professional resume/CV "
-                f"(detected: {getattr(claims, 'document_type', 'ACADEMIC_LAB_OR_EXERCISE')}). "
-                "Overall score: 0/100 REJECT."
-            )
-        )
         if save_report:
             reports_dir = Path("reports")
             reports_dir.mkdir(exist_ok=True)
@@ -102,26 +87,6 @@ def run_screening_pipeline(
                 json.dump(scorecard.model_dump(), f, indent=2)
             console.print(f"[dim]📁 Detailed JSON report saved to: [bold]{report_file}[/bold][/dim]\n")
         return scorecard
-
-    # Resolve GitHub username (either passed via flag or discovered in PDF)
-    resolved_github = github_username or claims.github_username or "none"
-
-    # Step 2: Agent 2 - GitHub Code Auditor
-    if resolved_github and resolved_github.lower() not in ("none", "null", "undefined"):
-        with console.status(f"[bold magenta]🔍 [Agent 2] Auditing GitHub profile @{resolved_github}...", spinner="dots"):
-            evidence = audit_github(resolved_github)
-    else:
-        evidence = audit_github("")
-
-    # Step 3: Agent 3 - Cross-Auditor & Evaluator
-    with console.status("[bold green]📊 [Agent 3] Evaluating Claims vs Evidence & Generating Scorecard...", spinner="dots"):
-        scorecard = evaluate_candidate(
-            claims=claims,
-            evidence=evidence,
-            required_skills=required_skills,
-            target_role=target_role,
-            min_experience=min_experience
-        )
 
     # Display Results in Terminal
     _display_scorecard(claims, evidence, scorecard)

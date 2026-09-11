@@ -1,0 +1,98 @@
+{
+  "resumes/valid_backend_engineer.pdf": {
+    "is_valid_resume": true,
+    "document_type": "RESUME",
+    "score_allowed": "> 0",
+    "github_required": true,
+    "expected_recommendation_in": ["STRONG_CANDIDATE", "SHORTLIST", "REVIEW", "REJECT"],
+    "next_action_in": ["SCHEDULE_INTERVIEW", "REVIEW_RECOMMENDED", "DO_NOT_PROCEED"]
+  },
+  "resumes/valid_fullstack_engineer.pdf": {
+    "is_valid_resume": true,
+    "document_type": "RESUME",
+    "score_allowed": "> 0",
+    "github_required": true,
+    "expected_recommendation_in": ["STRONG_CANDIDATE", "SHORTLIST", "REVIEW"],
+    "next_action_in": ["SCHEDULE_INTERVIEW", "REVIEW_RECOMMENDED"]
+  },
+  "resumes/valid_resume_no_github.pdf": {
+    "is_valid_resume": true,
+    "document_type": "RESUME",
+    "score_allowed": "Any valid score",
+    "github_required": false,
+    "expected_recommendation_in": ["STRONG_CANDIDATE", "SHORTLIST", "REVIEW", "REJECT"],
+    "next_action_in": ["SCHEDULE_INTERVIEW", "REVIEW_RECOMMENDED", "DO_NOT_PROCEED"]
+  },
+  "resumes/valid_resume_with_experiment.pdf": {
+    "is_valid_resume": true,
+    "document_type": "RESUME",
+    "score_allowed": "Any valid score",
+    "github_required": false,
+    "expected_recommendation_in": ["STRONG_CANDIDATE", "SHORTLIST", "REVIEW"],
+    "next_action_in": ["SCHEDULE_INTERVIEW", "REVIEW_RECOMMENDED"]
+  },
+  "resumes/valid_low_score_resume.pdf": {
+    "is_valid_resume": true,
+    "document_type": "RESUME",
+    "score_allowed": "Low / 0 score allowed",
+    "github_required": false,
+    "expected_recommendation": "REJECT",
+    "recruiter_recommendation_in": ["REJECT", "NOT_RECOMMENDED"],
+    "next_action": "DO_NOT_PROCEED",
+    "critical_rule": "overall_score == 0 MUST NOT imply is_valid_resume == false"
+  },
+  "invalid_documents/academic_lab_manual.pdf": {
+    "is_valid_resume": false,
+    "document_type": "ACADEMIC_LAB_OR_EXERCISE",
+    "overall_score": 0,
+    "recommendation": "REJECT",
+    "recruiter_recommendation": "INVALID_DOCUMENT",
+    "next_action": "REQUEST_RESUME",
+    "downstream_calls_allowed": false
+  },
+  "invalid_documents/coursework_assignment.pdf": {
+    "is_valid_resume": false,
+    "document_type": "ASSIGNMENT_OR_HOMEWORK",
+    "overall_score": 0,
+    "recommendation": "REJECT",
+    "recruiter_recommendation": "INVALID_DOCUMENT",
+    "next_action": "REQUEST_RESUME",
+    "downstream_calls_allowed": false
+  },
+  "invalid_documents/question_paper.pdf": {
+    "is_valid_resume": false,
+    "document_type": "QUESTION_PAPER",
+    "overall_score": 0,
+    "recommendation": "REJECT",
+    "recruiter_recommendation": "INVALID_DOCUMENT",
+    "next_action": "REQUEST_RESUME",
+    "downstream_calls_allowed": false
+  },
+  "invalid_documents/unrelated_document.pdf": {
+    "is_valid_resume": false,
+    "document_type": "UNRELATED_DOCUMENT",
+    "overall_score": 0,
+    "recommendation": "REJECT",
+    "recruiter_recommendation": "INVALID_DOCUMENT",
+    "next_action": "REQUEST_RESUME",
+    "downstream_calls_allowed": false
+  },
+  "invalid_documents/empty_document.pdf": {
+    "is_valid_resume": false,
+    "document_type": "EMPTY_OR_CORRUPT",
+    "overall_score": 0,
+    "recommendation": "REJECT",
+    "recruiter_recommendation": "INVALID_DOCUMENT",
+    "next_action": "REQUEST_RESUME",
+    "downstream_calls_allowed": false
+  },
+  "corrupted/corrupt_pdf.pdf": {
+    "is_valid_resume": false,
+    "document_type": "CORRUPT_OR_UNREADABLE_FILE",
+    "overall_score": 0,
+    "recommendation": "REJECT",
+    "recruiter_recommendation": "INVALID_DOCUMENT",
+    "next_action": "REQUEST_RESUME",
+    "downstream_calls_allowed": false
+  }
+}

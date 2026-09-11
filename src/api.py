@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Request, Depends
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Request, Depends, Query
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +26,7 @@ from .batch_screener import run_batch_screening, generate_batch_csv, BatchScreen
 from .auth.router import router as auth_router
 from .audits.router import router as audit_router
 from .routes.platform_router import router as platform_router
+from .routes.integrations_router import router as integrations_router
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from .db.session import get_db, async_session_factory
@@ -82,6 +83,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router)
 app.include_router(audit_router)
 app.include_router(platform_router)
+app.include_router(integrations_router)
 
 # In-memory storage for tasks and history with resilient demo seeds
 tasks_db: Dict[str, Dict[str, Any]] = {}
@@ -177,6 +179,102 @@ DEFAULT_DEMO_SCREENINGS: List[Dict[str, Any]] = [
 ]
 history_db: List[Dict[str, Any]] = list(DEFAULT_DEMO_SCREENINGS)
 
+# In-memory storage for jobs with resilient demo seeds
+DEFAULT_JOBS: List[Dict[str, Any]] = [
+    {
+        "id": "job-001",
+        "title": "Senior Backend Engineer",
+        "department": "Engineering",
+        "location": "Remote",
+        "work_model": "remote",
+        "seniority": "Senior",
+        "experience_min_years": 5.0,
+        "required_skills": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "AWS"],
+        "preferred_skills": ["Kubernetes", "Kafka", "CI/CD", "GraphQL"],
+        "responsibilities": [
+            "Architect and build high-throughput backend services and microservices.",
+            "Design, optimize, and maintain PostgreSQL database schemas and Redis caching.",
+            "Ensure system reliability, low-latency API response times, and automated CI/CD testing."
+        ],
+        "qualifications": ["5+ years professional backend engineering experience in Python."],
+        "raw_jd_text": "We are looking for a Senior Backend Engineer to architect and scale our core services using Python, FastAPI, PostgreSQL, Redis, and Docker in AWS.",
+        "status": "active",
+        "candidates_count": 24,
+        "created_at": "2026-09-01T10:00:00Z"
+    },
+    {
+        "id": "job-002",
+        "title": "Full-Stack Engineer",
+        "department": "Product Engineering",
+        "location": "Remote / Hybrid",
+        "work_model": "hybrid",
+        "seniority": "Mid-Senior",
+        "experience_min_years": 3.0,
+        "required_skills": ["React", "TypeScript", "Node.js", "Next.js", "TailwindCSS"],
+        "preferred_skills": ["GraphQL", "PostgreSQL", "Docker", "Jest"],
+        "responsibilities": [
+            "Develop modern, responsive web applications using React, Next.js, and TypeScript.",
+            "Collaborate with product designers to implement pixel-perfect user interfaces.",
+            "Build robust Node.js backend endpoints and integrate third-party APIs."
+        ],
+        "qualifications": ["3+ years building full-stack web applications with React and TypeScript."],
+        "raw_jd_text": "We are seeking a talented Full-Stack Engineer skilled in React, TypeScript, Next.js, and Node.js to build delightful user experiences.",
+        "status": "active",
+        "candidates_count": 41,
+        "created_at": "2026-09-03T11:30:00Z"
+    },
+    {
+        "id": "job-003",
+        "title": "AI/ML Platform Engineer",
+        "department": "AI Research & Platform",
+        "location": "Remote",
+        "work_model": "remote",
+        "seniority": "Senior",
+        "experience_min_years": 4.0,
+        "required_skills": ["Python", "PyTorch", "LLMs", "Kubernetes", "Docker", "FastAPI"],
+        "preferred_skills": ["MLflow", "Triton", "vLLM", "Ray", "AWS"],
+        "responsibilities": [
+            "Deploy, optimize, and serve large language models (LLMs) in production with low latency.",
+            "Build robust inference pipelines and automated model evaluation benchmarks.",
+            "Scale Kubernetes clusters for GPU-accelerated workloads."
+        ],
+        "qualifications": ["4+ years in machine learning engineering, model deployment, and Python systems."],
+        "raw_jd_text": "Looking for an AI/ML Platform Engineer with strong PyTorch, LLM serving, and Kubernetes infrastructure skills.",
+        "status": "active",
+        "candidates_count": 18,
+        "created_at": "2026-09-05T09:15:00Z"
+    }
+]
+jobs_db: Dict[str, Dict[str, Any]] = {j["id"]: dict(j) for j in DEFAULT_JOBS}
+
+class JobCreateRequest(BaseModel):
+    title: str
+    department: Optional[str] = "Engineering"
+    location: Optional[str] = "Remote"
+    work_model: Optional[str] = "remote"
+    seniority: Optional[str] = "Senior"
+    experience_min_years: Optional[float] = 3.0
+    required_skills: List[str] = Field(default_factory=list)
+    preferred_skills: List[str] = Field(default_factory=list)
+    responsibilities: List[str] = Field(default_factory=list)
+    qualifications: List[str] = Field(default_factory=list)
+    raw_jd_text: Optional[str] = ""
+    status: Optional[str] = "active"
+
+class JobUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    department: Optional[str] = None
+    location: Optional[str] = None
+    work_model: Optional[str] = None
+    seniority: Optional[str] = None
+    experience_min_years: Optional[float] = None
+    required_skills: Optional[List[str]] = None
+    preferred_skills: Optional[List[str]] = None
+    responsibilities: Optional[List[str]] = None
+    qualifications: Optional[List[str]] = None
+    raw_jd_text: Optional[str] = None
+    status: Optional[str] = None
+
 STATIC_DIR = Path(__file__).parent.parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -187,6 +285,111 @@ async def serve_index():
     if index_path.exists():
         return FileResponse(str(index_path))
     return {"message": "Resume Screener SaaS API active. Visit /docs for Swagger UI."}
+
+@app.get("/assessment.html")
+async def serve_assessment_page():
+    ass_path = STATIC_DIR / "assessment.html"
+    if ass_path.exists():
+        return FileResponse(str(ass_path))
+    raise HTTPException(status_code=404, detail="Assessment portal page not found.")
+
+@app.get("/assessment.js")
+async def serve_assessment_js():
+    js_path = STATIC_DIR / "assessment.js"
+    if js_path.exists():
+        return FileResponse(str(js_path), media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="Assessment JS not found.")
+
+@app.get("/assessment/{assessment_id}")
+async def serve_assessment_direct(assessment_id: str):
+    ass_path = STATIC_DIR / "assessment.html"
+    if ass_path.exists():
+        return FileResponse(str(ass_path))
+    raise HTTPException(status_code=404, detail="Assessment portal page not found.")
+
+# ============================================================================
+# JOB DESCRIPTION INTELLIGENCE & JOB MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.post("/api/v1/jobs/parse")
+async def parse_job_description_endpoint(
+    raw_text: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None)
+):
+    """Parses a complete Job Description text or uploaded file (.pdf, .docx, .txt) into structured intelligence."""
+    from .services.jd_service import process_job_description_input
+    file_bytes = None
+    filename = None
+    if file:
+        file_bytes = await file.read()
+        filename = file.filename
+
+    if not raw_text and not file_bytes:
+        raise HTTPException(status_code=400, detail="Must provide either raw text or an uploaded file (.pdf, .docx, .txt).")
+
+    try:
+        parsed = process_job_description_input(raw_text=raw_text, file_bytes=file_bytes, filename=filename)
+        return {"status": "success", "data": parsed.model_dump()}
+    except Exception as e:
+        logger.error(f"Error parsing job description: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse job description: {str(e)}")
+
+@app.get("/api/v1/jobs")
+async def list_jobs_endpoint():
+    """Lists all active and archived job openings."""
+    return {"jobs": list(jobs_db.values())}
+
+@app.post("/api/v1/jobs")
+async def create_job_endpoint(payload: JobCreateRequest):
+    """Creates a new job profile."""
+    job_id = f"job-{uuid.uuid4().hex[:8]}"
+    job_data = {
+        "id": job_id,
+        "title": payload.title,
+        "department": payload.department or "Engineering",
+        "location": payload.location or "Remote",
+        "work_model": payload.work_model or "remote",
+        "seniority": payload.seniority or "Senior",
+        "experience_min_years": float(payload.experience_min_years or 3.0),
+        "required_skills": payload.required_skills or [],
+        "preferred_skills": payload.preferred_skills or [],
+        "responsibilities": payload.responsibilities or [],
+        "qualifications": payload.qualifications or [],
+        "raw_jd_text": payload.raw_jd_text or "",
+        "status": payload.status or "active",
+        "candidates_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    jobs_db[job_id] = job_data
+    return {"status": "created", "job": job_data}
+
+@app.get("/api/v1/jobs/{job_id}")
+async def get_job_endpoint(job_id: str):
+    """Retrieves a specific job profile."""
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="Job opening not found.")
+    return jobs_db[job_id]
+
+@app.put("/api/v1/jobs/{job_id}")
+async def update_job_endpoint(job_id: str, payload: JobUpdateRequest):
+    """Updates an existing job profile."""
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="Job opening not found.")
+    current = jobs_db[job_id]
+    updates = payload.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        if v is not None:
+            current[k] = v
+    jobs_db[job_id] = current
+    return {"status": "updated", "job": current}
+
+@app.delete("/api/v1/jobs/{job_id}")
+async def delete_job_endpoint(job_id: str):
+    """Deletes a job profile."""
+    if job_id not in jobs_db:
+        raise HTTPException(status_code=404, detail="Job opening not found.")
+    jobs_db.pop(job_id)
+    return {"status": "deleted", "job_id": job_id}
 
 async def _process_screening_task(
     task_id: str,
@@ -200,12 +403,27 @@ async def _process_screening_task(
     required_skills: Optional[List[str]] = None,
     min_experience: Optional[float] = None,
     linkedin_url: Optional[str] = None,
-    job_description: Optional[str] = None
+    job_description: Optional[str] = None,
+    job_id: Optional[str] = None
 ):
     start_time = time.time()
     try:
         tasks_db[task_id]["status"] = "processing"
         
+        # Merge job profile data if job_id was specified
+        if job_id and job_id in jobs_db:
+            j = jobs_db[job_id]
+            target_role = target_role or j.get("title")
+            job_description = job_description or j.get("raw_jd_text")
+            if min_experience is None:
+                min_experience = j.get("experience_min_years")
+            j_req = j.get("required_skills", [])
+            if required_skills:
+                seen_sk = {s.lower() for s in required_skills}
+                required_skills = required_skills + [s for s in j_req if s.lower() not in seen_sk]
+            else:
+                required_skills = list(j_req)
+
         result_payload = None
         try:
             async with async_session_factory() as db:
@@ -235,6 +453,57 @@ async def _process_screening_task(
                 job_description=job_description
             )
         result_payload["task_id"] = task_id
+
+        # Attach Job Profile & Detailed Evidence Match
+        try:
+            from .services.jd_service import StructuredJobDescription, evaluate_candidate_job_fit
+            from .agent_1_resume_parser import CandidateClaims
+            from .agent_2_code_auditor import GitHubEvidence
+
+            active_jd = None
+            if job_id and job_id in jobs_db:
+                j = jobs_db[job_id]
+                active_jd = StructuredJobDescription(
+                    title=j.get("title", target_role or "Software Engineer"),
+                    department=j.get("department", "Engineering"),
+                    location=j.get("location", "Remote"),
+                    work_model=j.get("work_model", "remote"),
+                    seniority=j.get("seniority", "Senior"),
+                    experience_min_years=float(j.get("experience_min_years", min_experience or 3.0)),
+                    required_skills=j.get("required_skills", required_skills or []),
+                    preferred_skills=j.get("preferred_skills", []),
+                    responsibilities=j.get("responsibilities", []),
+                    raw_jd_text=j.get("raw_jd_text", "")
+                )
+                jobs_db[job_id]["candidates_count"] = jobs_db[job_id].get("candidates_count", 0) + 1
+            elif target_role or required_skills or job_description:
+                active_jd = StructuredJobDescription(
+                    title=target_role or "Software Engineer",
+                    experience_min_years=float(min_experience or 3.0),
+                    required_skills=required_skills or [],
+                    preferred_skills=[],
+                    raw_jd_text=job_description or ""
+                )
+
+            if active_jd and "claims_obj" in result_payload and "evidence_obj" in result_payload:
+                c_obj = result_payload["claims_obj"]
+                e_obj = result_payload["evidence_obj"]
+                claims_model = CandidateClaims(**c_obj) if isinstance(c_obj, dict) else c_obj
+                evidence_model = GitHubEvidence(**e_obj) if isinstance(e_obj, dict) else e_obj
+                
+                is_valid = getattr(claims_model, "is_valid_resume", True)
+                if is_valid:
+                    fit = evaluate_candidate_job_fit(claims_model, evidence_model, active_jd)
+                    result_payload["job_match_score"] = fit.overall_match_pct
+                    result_payload["job_match_result"] = fit.model_dump()
+                    result_payload["job_id"] = job_id
+                    result_payload["job_title"] = active_jd.title
+                else:
+                    result_payload["job_match_score"] = 0
+                    result_payload["job_id"] = job_id
+                    result_payload["job_title"] = active_jd.title
+        except Exception as fit_err:
+            logger.warning(f"Could not compute job-specific evidence match: {fit_err}")
             
         tasks_db[task_id] = {
             "task_id": task_id,
@@ -271,6 +540,7 @@ async def screen_resume_endpoint(
     min_experience: Optional[float] = Form(None),
     linkedin_url: Optional[str] = Form(None),
     webhook_url: Optional[str] = Form(None),
+    job_id: Optional[str] = Form(None),
     tenant: TenantContext = Depends(get_tenant_or_demo_context)
 ):
     """Submits a candidate resume for asynchronous screening with PostgreSQL persistence, company skills audit, and tenant isolation."""
@@ -329,7 +599,8 @@ async def screen_resume_endpoint(
         required_skills=parsed_skills,
         min_experience=min_experience,
         linkedin_url=linkedin_url,
-        job_description=job_description.strip() if job_description else None
+        job_description=job_description.strip() if job_description else None,
+        job_id=job_id
     )
 
     return {
@@ -624,11 +895,24 @@ batches_db: Dict[str, Dict[str, Any]] = {}
 @app.post("/api/v1/batch/screen")
 async def screen_batch_endpoint(
     background_tasks: BackgroundTasks,
-    files: List[UploadFile] = File(...)
+    files: List[UploadFile] = File(...),
+    job_id: Optional[str] = Form(None)
 ):
     """Batch screening endpoint for multiple resumes or forwarded .eml files."""
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
+
+    target_role = None
+    required_skills = None
+    min_experience = None
+    job_description = None
+    if job_id and job_id in jobs_db:
+        j = jobs_db[job_id]
+        target_role = j.get("title")
+        required_skills = j.get("required_skills")
+        min_experience = j.get("experience_min_years")
+        job_description = j.get("raw_jd_text")
+        j["candidates_count"] = j.get("candidates_count", 0) + len(files)
 
     batch_id = str(uuid.uuid4())
     applications = []
@@ -659,12 +943,20 @@ async def screen_batch_endpoint(
         "status": "processing",
         "total_files": len(files),
         "created_at": time.time(),
-        "summary": None
+        "summary": None,
+        "job_id": job_id
     }
 
     async def _run_batch_task():
         try:
-            summary = await run_batch_screening(batch_id, applications)
+            summary = await run_batch_screening(
+                batch_id,
+                applications,
+                target_role=target_role,
+                required_skills=required_skills,
+                min_experience=min_experience,
+                job_description=job_description
+            )
             batches_db[batch_id]["status"] = "completed"
             batches_db[batch_id]["summary"] = summary.model_dump()
         except Exception as e:
@@ -853,13 +1145,28 @@ async def update_email_config(
     return {"status": "updated", "config": current_email_config.model_dump(exclude={"password"})}
 
 @app.post("/api/v1/email/sync")
-async def sync_inbox_endpoint(background_tasks: BackgroundTasks):
+async def sync_inbox_endpoint(
+    background_tasks: BackgroundTasks,
+    job_id: Optional[str] = Query(None)
+):
     """Option A: Connects directly to recruiter inbox, pulls unread applications, and screens them."""
     syncer = EmailInboxSync(current_email_config)
     apps = syncer.fetch_unread_applications(limit=15)
 
     if not apps:
         return {"status": "no_new_emails", "message": "No unread applications found in inbox."}
+
+    target_role = None
+    required_skills = None
+    min_experience = None
+    job_description = None
+    if job_id and job_id in jobs_db:
+        j = jobs_db[job_id]
+        target_role = j.get("title")
+        required_skills = j.get("required_skills")
+        min_experience = j.get("experience_min_years")
+        job_description = j.get("raw_jd_text")
+        j["candidates_count"] = j.get("candidates_count", 0) + len(apps)
 
     batch_id = str(uuid.uuid4())
     sample_pdf = b""
@@ -883,12 +1190,20 @@ async def sync_inbox_endpoint(background_tasks: BackgroundTasks):
         "status": "processing",
         "total_files": len(batch_apps),
         "created_at": time.time(),
-        "summary": None
+        "summary": None,
+        "job_id": job_id
     }
 
     async def _run_sync_task():
         try:
-            summary = await run_batch_screening(batch_id, batch_apps)
+            summary = await run_batch_screening(
+                batch_id,
+                batch_apps,
+                target_role=target_role,
+                required_skills=required_skills,
+                min_experience=min_experience,
+                job_description=job_description
+            )
             batches_db[batch_id]["status"] = "completed"
             batches_db[batch_id]["summary"] = summary.model_dump()
         except Exception as e:
@@ -1080,10 +1395,26 @@ async def get_scheduler_status():
     return email_scheduler.get_status()
 
 @app.post("/api/v1/scheduler/toggle")
-async def toggle_scheduler(active: bool = True):
+async def toggle_scheduler(request: Request):
     """Enables or disables automatic background email polling."""
-    if active:
-        email_scheduler.start(interval_seconds=900)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    interval = int(body.get("interval_minutes", 15)) if isinstance(body, dict) else 15
+    active = body.get("active") if isinstance(body, dict) else None
+
+    if active is not None:
+        target_active = bool(active)
+    else:
+        # Toggle current running state
+        target_active = not email_scheduler.is_running
+
+    if target_active:
+        email_scheduler.start(interval_seconds=max(60, interval * 60))
     else:
         email_scheduler.stop()
     return email_scheduler.get_status()
+

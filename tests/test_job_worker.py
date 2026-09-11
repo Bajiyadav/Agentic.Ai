@@ -12,7 +12,9 @@ async def test_job_worker_queue_and_execution():
     org_id = uuid.uuid4()
     org_slug = f"job-test-{org_id.hex[:6]}"
 
+    from sqlalchemy import delete
     async with async_session_factory() as db:
+        await db.execute(delete(Job))
         org = Organization(
             id=org_id,
             name="Job Worker Corp",

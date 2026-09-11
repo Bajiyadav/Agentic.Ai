@@ -47,7 +47,7 @@ class DraftResponseGenerator:
         first_name = words[0] if words and words[0].lower() not in ("non-resume", "invalid", "document", "candidate", "applicant") else "Candidate"
 
         if score == 0 or "non-resume" in (candidate_name or "").lower() or "invalid" in (candidate_name or "").lower():
-            subject = f"Action Required: Resume Submission for {role_title} at {company_name}"
+            subject = f"Action Required: Resume Submission / Resubmission for {role_title} at {company_name}"
             body = (
                 f"Dear Applicant,\n\n"
                 f"Thank you for your interest in the {role_title} position at {company_name}.\n\n"

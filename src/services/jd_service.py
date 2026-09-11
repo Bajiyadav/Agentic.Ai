@@ -14,15 +14,32 @@ logger = logging.getLogger(__name__)
 class StructuredJobDescription(BaseModel):
     title: str = Field(..., description="Job title, e.g. Senior Backend Engineer")
     department: str = Field(default="Engineering", description="Department or team")
+    domain: str = Field(default="Software Engineering", description="Domain or specialization")
     location: str = Field(default="Remote", description="Location or Remote")
     work_model: str = Field(default="remote", description="remote, hybrid, onsite")
+    work_mode: str = Field(default="remote", description="remote, hybrid, onsite")
     seniority: str = Field(default="Senior", description="Junior, Mid, Senior, Staff, Lead")
     experience_min_years: float = Field(default=3.0, description="Minimum years of required experience")
+    minimum_years_experience: float = Field(default=3.0, description="Minimum years of required experience")
     experience_max_years: Optional[float] = Field(default=None, description="Maximum experience years if stated")
     required_skills: List[str] = Field(default_factory=list, description="Mandatory technical skills")
     preferred_skills: List[str] = Field(default_factory=list, description="Preferred or bonus technical skills")
     responsibilities: List[str] = Field(default_factory=list, description="Core responsibilities")
+    qualifications: List[str] = Field(default_factory=list, description="Educational or domain qualifications")
     salary_range: Optional[str] = Field(default=None, description="Salary or compensation range")
+    source_type: str = Field(default="pasted_text", description="uploaded_file | pasted_text | url | manual")
+    raw_jd_text: Optional[str] = Field(default=None, description="Original raw text")
+
+    def __init__(self, **data):
+        if "minimum_years_experience" in data and "experience_min_years" not in data:
+            data["experience_min_years"] = data["minimum_years_experience"]
+        elif "experience_min_years" in data and "minimum_years_experience" not in data:
+            data["minimum_years_experience"] = data["experience_min_years"]
+        if "work_mode" in data and "work_model" not in data:
+            data["work_model"] = data["work_mode"]
+        elif "work_model" in data and "work_mode" not in data:
+            data["work_mode"] = data["work_model"]
+        super().__init__(**data)
 
 class JobMatchResult(BaseModel):
     job_title: str
@@ -36,6 +53,11 @@ class JobMatchResult(BaseModel):
     contradictions: List[str] = Field(default_factory=list)
     job_fit_recommendation: str = Field(..., description="STRONG_MATCH | POTENTIAL_MATCH | POOR_MATCH")
     summary: str
+    breakdown: Dict[str, int] = Field(default_factory=dict)
+    evidence_matrix: List[Dict[str, Any]] = Field(default_factory=list)
+    why_reasons: List[str] = Field(default_factory=list)
+    gaps: List[str] = Field(default_factory=list)
+    claims_requiring_verification: List[str] = Field(default_factory=list)
 
 def _clean_title(t: str) -> str:
     t = re.sub(r"^(?:as\s+an?|as|for\s+an?|for|an?)\s+", "", t.strip(), flags=re.IGNORECASE)
@@ -121,22 +143,473 @@ def _heuristic_jd_parser(jd_text: str) -> StructuredJobDescription:
         exp_match = re.search(r"(\d+)\s*-\s*\d+\s*(?:years?|yrs?)", jd_text, re.IGNORECASE)
     years = float(exp_match.group(1)) if exp_match else 3.0
 
-    return StructuredJobDescription(
-        title=title,
-        department="Engineering",
-        location="Remote / Hybrid",
-        work_model="remote",
-        seniority="Senior" if years >= 4 else "Mid",
-        experience_min_years=years,
-        required_skills=required,
-        preferred_skills=preferred,
-        responsibilities=[
+    # Extract responsibilities if present
+    responsibilities = []
+    resp_match = re.search(
+        r"(?:responsibilities|what you(?:'ll)? do|key duties|role responsibilities)(.*?)(?:requirements|qualifications|what you bring|benefits|about us|\Z)",
+        jd_text,
+        re.IGNORECASE | re.DOTALL
+    )
+    if resp_match:
+        lines = [re.sub(r"^[\s*•\-\d.]+", "", l).strip() for l in resp_match.group(1).splitlines() if len(re.sub(r"^[\s*•\-\d.]+", "", l).strip()) > 15]
+        if lines:
+            responsibilities = lines[:5]
+
+    if not responsibilities:
+        responsibilities = [
             "Architect, build, and maintain scalable software services and APIs.",
             "Collaborate with cross-functional product and engineering teams.",
             "Ensure high software engineering standards with automated tests and CI/CD."
-        ],
+        ]
+
+    # Extract qualifications if present
+    qualifications = []
+    qual_match = re.search(
+        r"(?:qualifications|requirements|what you bring|education)(.*?)(?:responsibilities|benefits|about us|\Z)",
+        jd_text,
+        re.IGNORECASE | re.DOTALL
+    )
+    if qual_match:
+        lines = [re.sub(r"^[\s*•\-\d.]+", "", l).strip() for l in qual_match.group(1).splitlines() if len(re.sub(r"^[\s*•\-\d.]+", "", l).strip()) > 15]
+        if lines:
+            qualifications = lines[:5]
+
+    return StructuredJobDescription(
+        title=title,
+        department="Engineering",
+        domain="Software Engineering",
+        location="Remote / Hybrid",
+        work_model="remote",
+        work_mode="remote",
+        seniority="Senior" if years >= 4 else "Mid",
+        experience_min_years=years,
+        minimum_years_experience=years,
+        required_skills=required,
+        preferred_skills=preferred,
+        responsibilities=responsibilities,
+        qualifications=qualifications,
         salary_range="Competitive"
     )
+
+# --- File Extraction & Content Validation ---
+
+def extract_text_from_jd_pdf(pdf_bytes: bytes) -> str:
+    """Extracts raw text safely from a Job Description PDF with size and structure validation."""
+    if not pdf_bytes or len(pdf_bytes) < 4:
+        raise ValueError("Job Description PDF is empty or missing content.")
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise ValueError("File exceeds maximum allowed size of 10MB.")
+    if not pdf_bytes.startswith(b"%PDF-"):
+        raise ValueError("Invalid PDF format: Missing %PDF- header signature.")
+
+    import io
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")
+            except Exception:
+                raise ValueError("Cannot read encrypted or password-protected Job Description PDF.")
+        full_text = []
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                full_text.append(t)
+        raw_text = "\n".join(full_text).strip()
+        if not raw_text or len(raw_text) < 10:
+            raise ValueError("Job Description PDF contains no readable text (scanned or image-only).")
+        return raw_text
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Failed to parse Job Description PDF: {str(e)}")
+
+def extract_text_from_jd_docx(docx_bytes: bytes) -> str:
+    """Extracts raw text safely from a Job Description DOCX with ZIP structure and size validation."""
+    if not docx_bytes or len(docx_bytes) < 4:
+        raise ValueError("Job Description DOCX is empty or missing content.")
+    if len(docx_bytes) > 10 * 1024 * 1024:
+        raise ValueError("File exceeds maximum allowed size of 10MB.")
+    if not docx_bytes.startswith(b"PK\x03\x04"):
+        raise ValueError("Invalid DOCX format: Missing ZIP/OpenXML magic header signature.")
+
+    import io
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(docx_bytes)) as zf:
+            namelist = zf.namelist()
+            # Path traversal / malicious zip entry check
+            for name in namelist:
+                if ".." in name or name.startswith("/") or name.startswith("\\"):
+                    raise ValueError("Suspicious file path detected in DOCX archive.")
+            
+            if "word/document.xml" not in namelist:
+                raise ValueError("Invalid DOCX container: Missing word/document.xml.")
+
+            # Decompressed size check (zip-bomb guard)
+            total_uncompressed = sum(info.file_size for info in zf.infolist())
+            if total_uncompressed > 25 * 1024 * 1024:
+                raise ValueError("Decompressed DOCX size exceeds safety threshold (25MB).")
+
+            xml_content = zf.read("word/document.xml")
+            tree = ET.fromstring(xml_content)
+            
+            # Extract paragraphs
+            paragraphs = []
+            for p in tree.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+                texts = [node.text for node in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if node.text]
+                if texts:
+                    paragraphs.append("".join(texts))
+            
+            raw_text = "\n".join(paragraphs).strip()
+            if not raw_text or len(raw_text) < 10:
+                raise ValueError("Job Description DOCX contains no readable text.")
+            return raw_text
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Failed to parse Job Description DOCX: {str(e)}")
+
+def validate_jd_document(text: str) -> Dict[str, Any]:
+    """
+    Validates that extracted text is actually a Job Description and not an academic lab manual,
+    assignment, question paper, candidate resume, or invoice.
+    """
+    if not text or len(text.strip()) < 80:
+        return {
+            "is_valid_jd": False,
+            "document_type": "EMPTY_OR_UNREADABLE",
+            "flags": ["Document contains insufficient text (<80 characters)."],
+            "error": "This document is empty or unreadable. Please upload a valid Job Description."
+        }
+
+    text_lower = text.lower()
+
+    # 1. Non-JD Academic / Coursework markers
+    academic_patterns = [
+        (r"\bexperiment\s*#?\s*\d+\b", "Experiment number header detected"),
+        (r"\blab\s+(?:manual|exercise|assignment|sheet|session|report|practical|file|instructions)\b", "Lab manual or lab exercise detected"),
+        (r"\bexercise\s*#?\s*\d+\b", "Course exercise numbering detected"),
+        (r"\btypes\s+of\s+constraints\b", "Coursework constraints topic detected"),
+        (r"\bsql\s+commands\s+and\s+expected\s+outcomes\b", "SQL lab instructional text detected"),
+        (r"\bquestion\s*paper\b", "Question paper detected"),
+        (r"\bmax(?:imum)?\s+marks\s*:\s*\d+\b", "Exam grading marks detected"),
+        (r"\bsemester\s+(?:i|ii|iii|iv|v|vi|vii|viii|\d+)\b", "University semester coursework detected"),
+        (r"\broll\s+no\b", "Student roll number detected")
+    ]
+    for pattern, desc in academic_patterns:
+        if re.search(pattern, text_lower):
+            return {
+                "is_valid_jd": False,
+                "document_type": "ACADEMIC_LAB_OR_EXERCISE",
+                "flags": [desc],
+                "error": "This document does not appear to be a Job Description. Academic lab manuals and coursework assignments cannot be used as role requirements."
+            }
+
+    # 2. Non-JD Resume / CV check (Candidate resume accidentally uploaded in JD field)
+    resume_patterns = [
+        r"\bcurriculum\s+vitae\b",
+        r"\bcareer\s+objective\b",
+        r"\bprofessional\s+summary\b.*(?:\bexperience\b|\beducation\b)",
+        r"\bwork\s+history\b.*(?:\bpresent\b|\b20\d\d\s*-\s*20\d\d\b)"
+    ]
+    is_resume_match = any(re.search(p, text_lower) for p in resume_patterns)
+    has_candidate_contact = bool(re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text) and 
+                                re.search(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", text))
+    
+    hiring_context_patterns = [
+        r"\b(?:we\s+are|we're)\s+(?:hiring|looking|seeking)\b",
+        r"\babout\s+(?:the\s+role|the\s+company|the\s+team|us)\b",
+        r"\b(?:role|job)\s+overview\b",
+        r"\bwhat\s+you(?:'ll)?\s+(?:do|bring|need)\b",
+        r"\b(?:key\s+)?responsibilities\b",
+        r"\b(?:basic|minimum|preferred|required)\s+qualifications\b",
+        r"\b(?:equal\s+opportunity|benefits|compensation|perks)\b",
+        r"\bapply\s+(?:now|here|today)\b"
+    ]
+    has_hiring_context = any(re.search(p, text_lower) for p in hiring_context_patterns)
+
+    if (is_resume_match or has_candidate_contact) and not has_hiring_context:
+        return {
+            "is_valid_jd": False,
+            "document_type": "CANDIDATE_RESUME",
+            "flags": ["Candidate resume structure detected in Job Description field."],
+            "error": "The uploaded file appears to be a candidate resume/CV rather than a company Job Description. Please upload a JD or paste job requirements."
+        }
+
+    # 3. Non-JD Invoice / Financial document check
+    if re.search(r"\b(?:invoice\s*#|bill\s+to|amount\s+due|subtotal|balance\s+due)\b", text_lower):
+        return {
+            "is_valid_jd": False,
+            "document_type": "FINANCIAL_DOCUMENT",
+            "flags": ["Financial invoice or billing document detected."],
+            "error": "This document appears to be an invoice or financial document, not a Job Description."
+        }
+
+    # 4. Positive JD signals check
+    pos_matches = [p for p in hiring_context_patterns if re.search(p, text_lower)]
+    has_tech_req = bool(re.search(r"\b(?:python|javascript|typescript|react|java|docker|kubernetes|aws|sql|c\+\+|golang|backend|frontend|software|engineer)\b", text_lower))
+    has_exp_mention = bool(re.search(r"\b(?:\d+\+?\s*(?:years?|yrs?)|experience|requirements)\b", text_lower))
+
+    if not pos_matches and not (has_tech_req and has_exp_mention):
+        return {
+            "is_valid_jd": False,
+            "document_type": "UNRELATED_DOCUMENT",
+            "flags": ["Document lacks standard job description headers, responsibilities, or role qualifications."],
+            "error": "This document does not appear to be a Job Description. Please upload a JD or paste the job requirements."
+        }
+
+    return {
+        "is_valid_jd": True,
+        "document_type": "JOB_DESCRIPTION",
+        "flags": [f"Verified job description markers: {len(pos_matches)} matched."],
+        "error": None
+    }
+
+def fetch_jd_from_url(url: str) -> str:
+    """Fetches job description text from a public job posting URL with SSRF protection."""
+    import urllib.parse
+    import urllib.request
+    import ipaddress
+    import socket
+
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("URL must use HTTP or HTTPS protocol.")
+    
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+
+    # Prevent SSRF: resolve hostname and check IP
+    try:
+        ip_str = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_str)
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ValueError(f"Access to private or local network addresses ({ip}) is prohibited.")
+        if str(ip) == "169.254.169.254":
+            raise ValueError("Access to cloud metadata service is prohibited.")
+    except socket.gaierror:
+        raise ValueError(f"Could not resolve host: {hostname}")
+
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "AuditAgent-JobIngestion/1.0 (Enterprise Recruitment Screener)"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" not in content_type and "text/plain" not in content_type:
+                raise ValueError(f"Unsupported content type from URL: {content_type}")
+            html_bytes = response.read(2 * 1024 * 1024)
+            html_text = html_bytes.decode("utf-8", errors="replace")
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        raise ValueError(f"Failed to fetch job description from URL: {str(e)}")
+
+    # Strip script/style tags and HTML markup
+    clean_text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html_text, flags=re.DOTALL | re.IGNORECASE)
+    clean_text = re.sub(r"<[^>]+>", " ", clean_text)
+    clean_text = re.sub(r"&[a-z]+;", " ", clean_text)
+    clean_text = re.sub(r"\s+", " ", clean_text).strip()
+    return clean_text
+
+def merge_requirements(
+    extracted_jd: StructuredJobDescription,
+    manual_role: Optional[str] = None,
+    manual_skills: Optional[List[str]] = None,
+    manual_min_exp: Optional[float] = None
+) -> StructuredJobDescription:
+    """
+    Applies deterministic precedence rule:
+    - Manual role overrides extracted title if explicitly provided by recruiter.
+    - Manual min experience overrides extracted experience if provided.
+    - Manual skills take precedence as mandatory required skills, unioned with extracted required skills.
+    - Extracted preferred skills remain intact (excluding any skills now in required).
+    """
+    title = manual_role.strip() if manual_role and manual_role.strip() else extracted_jd.title
+    min_exp = manual_min_exp if manual_min_exp is not None and manual_min_exp >= 0 else extracted_jd.experience_min_years
+
+    combined_required = []
+    seen = set()
+
+    # 1. Manual skills first (highest priority)
+    if manual_skills:
+        for s in manual_skills:
+            sc = s.strip()
+            if sc and sc.lower() not in seen:
+                combined_required.append(sc)
+                seen.add(sc.lower())
+
+    # 2. Extracted required skills
+    for s in extracted_jd.required_skills:
+        sc = s.strip()
+        if sc and sc.lower() not in seen:
+            combined_required.append(sc)
+            seen.add(sc.lower())
+
+    # 3. Clean preferred skills
+    preferred = []
+    for p in extracted_jd.preferred_skills:
+        pc = p.strip()
+        if pc and pc.lower() not in seen:
+            preferred.append(pc)
+            seen.add(pc.lower())
+
+    res = extracted_jd.model_copy()
+    res.title = title
+    res.experience_min_years = min_exp
+    res.minimum_years_experience = min_exp
+    res.required_skills = combined_required
+    res.preferred_skills = preferred
+    return res
+
+def process_job_description_input(
+    file_bytes: Optional[bytes] = None,
+    filename: Optional[str] = None,
+    text: Optional[str] = None,
+    url: Optional[str] = None,
+    manual_role: Optional[str] = None,
+    manual_skills: Optional[List[str]] = None,
+    manual_min_exp: Optional[float] = None
+) -> Dict[str, Any]:
+    """
+    Unified processor for all 4 JD input methods:
+    1. Upload File (.pdf, .docx)
+    2. Paste Text
+    3. Job Posting URL
+    4. Manual Requirements
+    """
+    raw_text = ""
+    source_type = "manual"
+
+    try:
+        if file_bytes and filename:
+            source_type = "uploaded_file"
+            fname_lower = filename.lower()
+            if fname_lower.endswith(".pdf"):
+                raw_text = extract_text_from_jd_pdf(file_bytes)
+            elif fname_lower.endswith(".docx"):
+                raw_text = extract_text_from_jd_docx(file_bytes)
+            elif fname_lower.endswith(".txt"):
+                raw_text = file_bytes.decode("utf-8", errors="replace").strip()
+            else:
+                return {
+                    "status": "invalid",
+                    "source_type": source_type,
+                    "filename": filename,
+                    "job_requirements": None,
+                    "validation": {
+                        "is_valid_jd": False,
+                        "document_type": "UNSUPPORTED_FORMAT",
+                        "flags": ["Unsupported file extension. Only .pdf, .docx, and .txt are supported."]
+                    },
+                    "error": "Unsupported file format. Please upload a PDF (.pdf), Word document (.docx), or Text file (.txt)."
+                }
+        elif url and url.strip():
+            source_type = "url"
+            raw_text = fetch_jd_from_url(url.strip())
+        elif text and text.strip():
+            source_type = "pasted_text"
+            raw_text = text.strip()
+        elif manual_role or manual_skills or manual_min_exp:
+            source_type = "manual"
+            skills_list = manual_skills or []
+            structured = StructuredJobDescription(
+                title=manual_role or "Software Engineer",
+                experience_min_years=manual_min_exp or 3.0,
+                minimum_years_experience=manual_min_exp or 3.0,
+                required_skills=skills_list,
+                preferred_skills=[],
+                source_type="manual"
+            )
+            return {
+                "status": "valid",
+                "source_type": "manual",
+                "filename": None,
+                "job_requirements": structured.model_dump(),
+                "validation": {
+                    "is_valid_jd": True,
+                    "document_type": "MANUAL_INPUTS",
+                    "flags": ["Constructed from recruiter manual requirements."]
+                },
+                "error": None
+            }
+        else:
+            return {
+                "status": "invalid",
+                "source_type": "none",
+                "filename": None,
+                "job_requirements": None,
+                "validation": {
+                    "is_valid_jd": False,
+                    "document_type": "NO_INPUT",
+                    "flags": ["No job description file, text, or URL provided."]
+                },
+                "error": "No Job Description provided. Please upload a file, paste text, or enter requirements."
+            }
+
+        # Validate extracted text content
+        val_result = validate_jd_document(raw_text)
+        if not val_result["is_valid_jd"]:
+            return {
+                "status": "invalid",
+                "source_type": source_type,
+                "filename": filename,
+                "job_requirements": None,
+                "validation": val_result,
+                "error": val_result["error"] or "This document does not appear to be a Job Description."
+            }
+
+        # Parse structured requirements
+        extracted = parse_job_description(raw_text)
+        extracted.source_type = source_type
+        extracted.raw_jd_text = raw_text[:2000]
+
+        # Apply manual merge if manual overrides were provided
+        final_jd = merge_requirements(extracted, manual_role, manual_skills, manual_min_exp)
+
+        return {
+            "status": "valid",
+            "source_type": source_type,
+            "filename": filename,
+            "job_requirements": final_jd.model_dump(),
+            "validation": val_result,
+            "error": None
+        }
+
+    except ValueError as ve:
+        return {
+            "status": "invalid",
+            "source_type": source_type,
+            "filename": filename,
+            "job_requirements": None,
+            "validation": {
+                "is_valid_jd": False,
+                "document_type": "PARSE_ERROR",
+                "flags": [str(ve)]
+            },
+            "error": str(ve)
+        }
+    except Exception as e:
+        logger.error(f"Error processing job description: {e}", exc_info=True)
+        return {
+            "status": "invalid",
+            "source_type": source_type,
+            "filename": filename,
+            "job_requirements": None,
+            "validation": {
+                "is_valid_jd": False,
+                "document_type": "SYSTEM_ERROR",
+                "flags": [str(e)]
+            },
+            "error": f"Failed to process Job Description: {str(e)}"
+        }
 
 def parse_job_description(jd_text: str) -> StructuredJobDescription:
     """Extracts structured requirements, required/preferred skills from raw JD text."""
@@ -209,25 +682,61 @@ def evaluate_candidate_job_fit(
     - Required skill match (50% weight)
     - Preferred skill match (25% weight)
     - Experience match (25% weight)
-    - Discrepancy & contradiction detection
+    - Detailed 0-100 score breakdown across 6 competency dimensions
+    - Granular Requirement Evidence Matrix (Verified, Strong, Moderate, Weak, No Public Evidence)
+    - Transparent callouts: Why?, Gaps, Claims Requiring Verification
     """
     # Normalize skills
-    candidate_all_skills = set(
-        [s.lower() for s in (claims.claimed_languages + claims.claimed_frameworks + claims.claimed_tools)] +
-        [l.lower() for l in evidence.languages_detected.keys()]
-    )
+    resume_skills = [s.lower() for s in (claims.claimed_languages + claims.claimed_frameworks + claims.claimed_tools)]
+    github_skills = [l.lower() for l in evidence.languages_detected.keys()]
+    repo_names = [r.get("name", "").lower() for r in (getattr(evidence, "repo_highlights", []) or [])]
+    candidate_all_skills = set(resume_skills + github_skills)
 
     # 1. Required Skills Evaluation
     req_skills = [s.strip() for s in jd.required_skills if s.strip()]
     matched_req = []
     missing_req = []
+    evidence_matrix = []
 
     for r in req_skills:
         r_clean = r.lower()
-        if any(r_clean in c or c in r_clean for c in candidate_all_skills):
+        in_resume = any(r_clean in c or c in r_clean for c in resume_skills)
+        in_github = any(r_clean in g or g in r_clean for g in (github_skills + repo_names))
+
+        if in_resume and in_github:
             matched_req.append(r)
-        else:
+            if evidence.original_repos_count > 0 or evidence.documentation_ratio >= 0.5:
+                strength = "VERIFIED"
+                meter_pct = 95
+                cand_ev = "Resume claim + verified public repository"
+            else:
+                strength = "STRONG_EVIDENCE"
+                meter_pct = 85
+                cand_ev = "Resume claim + GitHub code presence"
+        elif in_github:
+            matched_req.append(r)
+            strength = "STRONG_EVIDENCE"
+            meter_pct = 85
+            cand_ev = "Demonstrated in public GitHub code"
+        elif in_resume:
+            strength = "WEAK_EVIDENCE"
+            meter_pct = 35
+            cand_ev = "Resume claim only — Public evidence not found"
             missing_req.append(r)
+        else:
+            strength = "NO_PUBLIC_EVIDENCE"
+            meter_pct = 0
+            cand_ev = "No public evidence found"
+            missing_req.append(r)
+
+        evidence_matrix.append({
+            "requirement": r,
+            "is_required": True,
+            "candidate_evidence": cand_ev,
+            "strength": strength,
+            "meter_pct": meter_pct,
+            "evidence_details": f"Checked candidate resume and GitHub repositories for {r}."
+        })
 
     req_match_pct = int((len(matched_req) / len(req_skills)) * 100) if req_skills else 100
 
@@ -236,9 +745,37 @@ def evaluate_candidate_job_fit(
     matched_pref = []
     for p in pref_skills:
         p_clean = p.lower()
-        if any(p_clean in c or c in p_clean for c in candidate_all_skills):
+        in_resume = any(p_clean in c or c in p_clean for c in resume_skills)
+        in_github = any(p_clean in g or g in p_clean for g in (github_skills + repo_names))
+
+        if in_resume and in_github:
             matched_pref.append(p)
-    
+            strength = "STRONG_EVIDENCE"
+            meter_pct = 85
+            cand_ev = "Resume + verified public repository"
+        elif in_github:
+            matched_pref.append(p)
+            strength = "STRONG_EVIDENCE"
+            meter_pct = 80
+            cand_ev = "Demonstrated in public GitHub code"
+        elif in_resume:
+            strength = "WEAK_EVIDENCE"
+            meter_pct = 35
+            cand_ev = "Resume claim only"
+        else:
+            strength = "NO_PUBLIC_EVIDENCE"
+            meter_pct = 0
+            cand_ev = "No public evidence found (optional / preferred)"
+
+        evidence_matrix.append({
+            "requirement": p,
+            "is_required": False,
+            "candidate_evidence": cand_ev,
+            "strength": strength,
+            "meter_pct": meter_pct,
+            "evidence_details": f"Nice-to-have skill: checked candidate resume and code for {p}."
+        })
+
     pref_match_pct = int((len(matched_pref) / len(pref_skills)) * 100) if pref_skills else 80
 
     # 3. Experience Match Evaluation
@@ -268,10 +805,54 @@ def evaluate_candidate_job_fit(
     else:
         recommendation = "POOR_MATCH"
 
+    # 6. Granular 0-100 Competency Dimension Breakdown
+    github_ev_score = min(100, max(15, int((evidence.original_repos_count * 15) + (evidence.documentation_ratio * 40) + min(30, int(evidence.total_stars * 0.5)))))
+    code_qual_score = min(100, max(15, int((evidence.documentation_ratio * 65) + (25 if evidence.original_repos_count > 0 else 0) + (10 if evidence.recent_activity_count > 0 else 0))))
+    resp_match_score = min(100, max(20, int(req_match_pct * 0.70 + exp_match_pct * 0.30)))
+    claim_verif_score = min(100, max(10, int(100 - (len([item for item in evidence_matrix if item["strength"] == "WEAK_EVIDENCE"]) * 15))))
+
+    breakdown = {
+        "required_technical_skills": req_match_pct,
+        "relevant_experience": exp_match_pct,
+        "github_evidence": github_ev_score,
+        "code_quality": code_qual_score,
+        "responsibilities_match": resp_match_score,
+        "claim_verification": claim_verif_score,
+        "overall_job_match": overall_match
+    }
+
+    # 7. Callouts: Why, Gaps, Verification Claims
+    why_reasons = []
+    if matched_req:
+        why_reasons.append(f"Demonstrated verified proficiency in core mandatory skills: {', '.join(matched_req[:4])}.")
+    if cand_exp >= jd.experience_min_years:
+        why_reasons.append(f"Meets or exceeds minimum required experience ({cand_exp:.1f} yrs vs {jd.experience_min_years:.1f} yrs).")
+    if evidence.original_repos_count > 0:
+        why_reasons.append(f"Active public code footprint: {evidence.original_repos_count} original repositories with {evidence.documentation_ratio * 100:.0f}% documentation ratio.")
+    if not why_reasons:
+        why_reasons.append(f"Candidate evaluated against '{jd.title}'. Initial profile screened.")
+
+    gaps = []
+    if missing_req:
+        gaps.append(f"Missing or unverified mandatory skills: {', '.join(missing_req)}.")
+    if cand_exp < jd.experience_min_years:
+        gaps.append(f"Experience gap: Has {cand_exp:.1f} years, role requires {jd.experience_min_years:.1f} years.")
+    if not gaps:
+        gaps.append("No critical technical gaps identified for the mandatory requirements.")
+
+    claims_req_verification = []
+    weak_items = [item["requirement"] for item in evidence_matrix if item["strength"] == "WEAK_EVIDENCE"]
+    if weak_items:
+        claims_req_verification.append(f"Resume lists {', '.join(weak_items[:4])}, but no public code samples or repositories were found.")
+    if claims.years_experience and claims.years_experience > 4 and evidence.recent_activity_count == 0:
+        claims_req_verification.append("Senior experience claimed, but no active repository commits recorded in the past 6 months.")
+    if not claims_req_verification:
+        claims_req_verification.append("All primary technical claims correlate with verifiable evidence.")
+
     summary = (
-        f"{claims.name} demonstrates a {overall_match}% match for '{jd.title}'. "
+        f"{claims.name} demonstrates a {overall_match}/100 Job Match Score for '{jd.title}'. "
         f"Verified {len(matched_req)}/{len(req_skills)} required skills ({', '.join(matched_req[:3]) or 'None'}). "
-        f"Recommendation: {recommendation}."
+        f"Verdict: {recommendation}."
     )
 
     return JobMatchResult(
@@ -285,7 +866,12 @@ def evaluate_candidate_job_fit(
         matched_preferred_skills=matched_pref,
         contradictions=contradictions,
         job_fit_recommendation=recommendation,
-        summary=summary
+        summary=summary,
+        breakdown=breakdown,
+        evidence_matrix=evidence_matrix,
+        why_reasons=why_reasons,
+        gaps=gaps,
+        claims_requiring_verification=claims_req_verification
     )
 
 

@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Candidate Technical Assessment — AuditAgent.ai</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: #111827;
+      --bg-surface: #1e293b;
+      --border-color: #334155;
+      --accent-cyan: #06b6d4;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-amber: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      overflow-x: hidden;
+      user-select: none; /* Anti-cheat */
+    }
+
+    /* Steps Layout */
+    .portal-screen {
+      display: none;
+      min-height: 100vh;
+      width: 100%;
+    }
+    .portal-screen.active {
+      display: flex;
+    }
+
+    /* Top Bar */
+    .test-top-bar {
+      height: 64px;
+      background: rgba(17, 24, 39, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand-cluster {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo-pill {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.5px;
+    }
+
+    .test-status-cluster {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .timer-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #1e293b;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border-color);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+    .timer-pill.urgent {
+      border-color: var(--accent-red);
+      color: var(--accent-red);
+      animation: pulse 1s infinite;
+    }
+
+    .strike-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #f87171;
+    }
+    .strike-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #475569;
+    }
+    .strike-dot.active {
+      background: var(--accent-red);
+      box-shadow: 0 0 8px var(--accent-red);
+    }
+
+    /* Verification & Preflight Containers */
+    .center-card-wrap {
+      margin: auto;
+      max-width: 580px;
+      width: 90%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 36px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+
+    .input-otp-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin: 24px 0;
+    }
+    .otp-input-field {
+      width: 54px;
+      height: 64px;
+      font-size: 1.8rem;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      background: #0f172a;
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+    .otp-input-field:focus {
+      border-color: var(--accent-cyan);
+      outline: none;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
+    }
+
+    .btn-portal-primary {
+      width: 100%;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-portal-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+    .btn-portal-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Preflight Video & Audio */
+    .preview-box {
+      width: 100%;
+      height: 240px;
+      background: #000;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+      position: relative;
+      margin: 16px 0;
+    }
+    .preview-box video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .audio-meter-bar {
+      height: 6px;
+      background: #334155;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .audio-meter-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-green), var(--accent-amber), var(--accent-red));
+      transition: width 0.05s linear;
+    }
+
+    /* Assessment Room Main Split */
+    .assessment-workspace {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 64px - 56px);
+      overflow: hidden;
+    }
+    .question-panel {
+      width: 42%;
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      background: #0d131f;
+    }
+    .question-tabs {
+      display: flex;
+      background: #111827;
+      border-bottom: 1px solid var(--border-color);
+      overflow-x: auto;
+    }
+    .q-tab-btn {
+      padding: 12px 18px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+    }
+    .q-tab-btn.active {
+      color: var(--accent-cyan);
+      border-bottom-color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.08);
+    }
+    .question-content {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .editor-panel {
+      width: 58%;
+      display: flex;
+      flex-direction: column;
+      background: #090d16;
+    }
+
+    /* MCQ Panel */
+    .mcq-panel {
+      width: 58%;
+      display: flex;
+      flex-direction: column;
+      background: #090d16;
+    }
+    .mcq-header {
+      height: 48px;
+      background: #111827;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+    .mcq-content {
+      padding: 28px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .mcq-option-card {
+      background: #0f172a;
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      padding: 18px 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: all 0.2s ease;
+      width: 100%;
+      text-align: left;
+      font-family: inherit;
+      outline: none;
+    }
+    .mcq-option-card:hover {
+      border-color: var(--accent-cyan);
+      background: #1e293b;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .mcq-option-card.selected {
+      border-color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.12);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+    }
+    .mcq-letter-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      flex-shrink: 0;
+    }
+    .mcq-option-card.selected .mcq-letter-badge {
+      background: var(--accent-cyan);
+      color: #000;
+      border-color: var(--accent-cyan);
+    }
+    .mcq-option-text {
+      font-size: 0.95rem;
+      color: #e2e8f0;
+      line-height: 1.5;
+      flex: 1;
+    }
+    .mcq-radio-circle {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .mcq-option-card.selected .mcq-radio-circle {
+      border-color: var(--accent-cyan);
+    }
+    .mcq-radio-circle::after {
+      content: '';
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      display: none;
+    }
+    .mcq-option-card.selected .mcq-radio-circle::after {
+      display: block;
+    }
+
+    /* Bottom Action & Navigation Bar */
+    .test-bottom-bar {
+      height: 56px;
+      background: rgba(17, 24, 39, 0.96);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      bottom: 0;
+      z-index: 100;
+    }
+    .btn-nav {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-nav:hover:not(:disabled) {
+      background: #334155;
+      border-color: var(--accent-cyan);
+      color: #fff;
+    }
+    .btn-nav:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-nav-primary {
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+      border: none;
+      color: #fff;
+    }
+    .btn-nav-primary:hover:not(:disabled) {
+      box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4);
+    }
+    .progress-cluster {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .progress-dots-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-q-direct {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      color: #94a3b8;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .btn-q-direct:hover {
+      background: #334155;
+      border-color: var(--accent-cyan);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+    .btn-q-direct.active {
+      background: var(--accent-cyan);
+      color: #000;
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+    }
+    .btn-q-direct.answered {
+      border-color: var(--accent-green);
+      color: #4ade80;
+    }
+    .btn-q-direct.active.answered {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+    .editor-header {
+      height: 48px;
+      background: #111827;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+    .select-lang {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .code-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .code-textarea {
+      flex: 1;
+      width: 100%;
+      background: #090d16;
+      color: #e2e8f0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      padding: 16px;
+      border: none;
+      resize: none;
+      outline: none;
+      tab-size: 4;
+    }
+
+    /* Sandbox Console */
+    .sandbox-console {
+      height: 240px;
+      border-top: 1px solid var(--border-color);
+      background: #0d121d;
+      display: flex;
+      flex-direction: column;
+    }
+    .console-header {
+      padding: 8px 16px;
+      background: #111827;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .console-body {
+      padding: 12px 16px;
+      overflow-y: auto;
+      flex: 1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    /* Floating Proctoring HUD */
+    .floating-proctor-hud {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 220px;
+      height: 155px;
+      background: rgba(17, 24, 39, 0.9);
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(6, 182, 212, 0.4);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      overflow: hidden;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+    }
+    .floating-proctor-hud video {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      background: #000;
+    }
+    .hud-footer {
+      height: 35px;
+      background: #0b0f19;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .audio-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+    }
+    .audio-dot.speaking {
+      background: var(--accent-amber);
+      box-shadow: 0 0 8px var(--accent-amber);
+    }
+
+    /* Violation Toast */
+    .violation-banner {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(239, 68, 68, 0.95);
+      backdrop-filter: blur(8px);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.5);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      animation: slideDown 0.3s ease;
+    }
+
+    /* Auto-Termination Overlay */
+    .auto-terminate-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 18, 0.98);
+      z-index: 9999;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 32px;
+    }
+    .hazard-badge {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.15);
+      border: 2px solid var(--accent-red);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      margin-bottom: 24px;
+      box-shadow: 0 0 30px rgba(239, 68, 68, 0.4);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    @keyframes slideDown {
+      from { transform: translate(-50%, -20px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen 1: Verification & OTP -->
+  <div id="screen-auth" class="portal-screen active">
+    <div class="center-card-wrap">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <span class="brand-logo-pill">AuditAgent.ai</span>
+        <h2 style="margin-top: 16px; font-size: 1.5rem;">AI-Proctored Technical Assessment</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">
+          Enter the 6-digit one-time passcode (OTP) from your invitation email.
+        </p>
+      </div>
+
+      <div class="input-otp-row">
+        <input type="text" maxlength="1" class="otp-input-field" autofocus data-idx="0">
+        <input type="text" maxlength="1" class="otp-input-field" data-idx="1">
+        <input type="text" maxlength="1" class="otp-input-field" data-idx="2">
+        <input type="text" maxlength="1" class="otp-input-field" data-idx="3">
+        <input type="text" maxlength="1" class="otp-input-field" data-idx="4">
+        <input type="text" maxlength="1" class="otp-input-field" data-idx="5">
+      </div>
+
+      <div id="otp-error-msg" style="color: var(--accent-red); font-size: 0.85rem; text-align: center; min-height: 20px; margin-bottom: 12px;"></div>
+
+      <button type="button" id="btn-verify-otp" class="btn-portal-primary">
+        Verify & Continue
+      </button>
+    </div>
+  </div>
+
+  <!-- Screen 2: Device Pre-Flight Check -->
+  <div id="screen-preflight" class="portal-screen">
+    <div class="center-card-wrap" style="max-width: 640px;">
+      <h2 style="font-size: 1.4rem;">Hardware & Proctoring Check</h2>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
+        This assessment is monitored by continuous AI Vision & Audio analysis.
+      </p>
+
+      <div class="preview-box">
+        <video id="preflight-video" autoplay muted playsinline></video>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+          <span>Microphone Input Level</span>
+          <span id="mic-status-label">Listening...</span>
+        </div>
+        <div class="audio-meter-bar">
+          <div id="audio-meter-fill" class="audio-meter-fill"></div>
+        </div>
+      </div>
+
+      <div style="background: #0f172a; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; font-size: 0.82rem; line-height: 1.6;">
+        <strong style="color: #cbd5e1;">Strict Anti-Cheat Policy:</strong>
+        <ul style="padding-left: 20px; margin-top: 6px; color: var(--text-muted);">
+          <li><strong>Copy & Paste is Disabled:</strong> Attempting to copy or paste code triggers an immediate violation strike.</li>
+          <li><strong>Stay in Fullscreen:</strong> Exiting fullscreen or navigating away logs a violation strike.</li>
+          <li><strong>Camera & Mic Active:</strong> Face must remain visible. Sustained background talking or multiple faces trigger strikes.</li>
+          <li><span style="color: #f87171;"><strong>3-Strike Rule:</strong> Candidates receive 3 warnings. On the 4th violation, the test is permanently locked and disqualified.</span></li>
+        </ul>
+      </div>
+
+      <div style="margin-bottom: 20px; text-align: left;">
+        <label for="preflight-role-select" style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600;">
+          Select Exam Track (20 Specialized Industry Role Exams Available):
+        </label>
+        <select id="preflight-role-select" style="width: 100%; padding: 10px 14px; background: #090d16; border: 1px solid #334155; border-radius: 8px; color: #38bdf8; font-size: 0.88rem; font-weight: 600; cursor: pointer;">
+          <option value="software_engineer">1. Software Engineer (Backend & DSA - Rate Limiter & Two Sum)</option>
+          <option value="data_engineer">2. Data Engineer (SQL Window Functions & Stream Pipeline)</option>
+          <option value="frontend_engineer">3. Frontend Engineer (JavaScript & Systems - Debounce & Tree DFS)</option>
+          <option value="ml_engineer">4. AI & ML Engineer (Math & Vectors - Cosine Top-K & Gradient Step)</option>
+          <option value="devops_sre">5. DevOps & Cloud SRE (Infrastructure & Systems - Log Parser & Retry)</option>
+          <option value="fullstack_engineer">6. Full Stack Engineer (API Architecture, DB & State - Query Normalizer & Event Bus Debugging)</option>
+          <option value="security_engineer">7. Cybersecurity & AppSec (SQLi/XSS Detector & Timing Attack Defense)</option>
+          <option value="data_analyst">8. Data Analyst & BI (MoM Revenue Growth SQL & Customer Tiering)</option>
+          <option value="qa_automation_engineer">9. SDET & QA Automation (Flaky Retry Runner & Schema Validator Debugging)</option>
+          <option value="mobile_engineer">10. Mobile Engineer (LRU Image Cache & Retain Cycle Defense)</option>
+          <option value="cloud_architect">11. Cloud Solutions Architect (Multi-Region Latency & Cost Anomaly SQL)</option>
+          <option value="database_administrator">12. Database Administrator & Performance (Slow Query SQL & Deadlock Cycle)</option>
+          <option value="blockchain_engineer">13. Web3 & Blockchain Engineer (Merkle Root Hash & Whale Volume SQL)</option>
+          <option value="embedded_iot_engineer">14. Embedded Systems & IoT (Bitwise Register Mask & Ring Buffer)</option>
+          <option value="nlp_engineer">15. NLP & Large Language Model Engineer (Sliding Token Chunking & LLM Costs)</option>
+          <option value="computer_vision_engineer">16. Computer Vision Engineer (IoU Bounding Box & Class SQL)</option>
+          <option value="platform_engineer">17. Platform & DevEx Engineer (Semver Conflict Resolver & CI Duration)</option>
+          <option value="data_scientist">18. Data Scientist (Feature Normalizer & A/B Test Variant Conversion SQL)</option>
+          <option value="api_integrations_engineer">19. API & Enterprise Integrations (Webhook Signature & Error Rate SQL)</option>
+          <option value="game_developer">20. Game Engine & Graphics Developer (2D Circle Collision & Physics Delta)</option>
+        </select>
+
+        <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.72rem;">
+          <span style="background: rgba(168,85,247,0.15); color: #c084fc; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(168,85,247,0.3);">📘 MCQ Concepts</span>
+          <span style="background: rgba(168,85,247,0.15); color: #c084fc; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(168,85,247,0.3);">🏛️ System Architecture</span>
+          <span style="background: rgba(6,182,212,0.15); color: #22d3ee; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(6,182,212,0.3);">💻 DSA Algorithms</span>
+          <span style="background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">🗄️ SQL Window/CTEs</span>
+          <span style="background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">📊 SQL Analytics</span>
+          <span style="background: rgba(245,158,11,0.15); color: #fbbf24; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(245,158,11,0.3);">🐛 Code Debugging</span>
+          <span style="background: rgba(244,63,94,0.15); color: #fb7185; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(244,63,94,0.3);">🛡️ Security Defense</span>
+          <span style="background: rgba(59,130,246,0.15); color: #60a5fa; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(59,130,246,0.3);">⚡ Caching & Perf</span>
+          <span style="background: rgba(99,102,241,0.15); color: #818cf8; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(99,102,241,0.3);">🔄 Resilience & Retry</span>
+          <span style="background: rgba(20,184,166,0.15); color: #2dd4bf; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(20,184,166,0.3);">🔀 Data Pipeline ETL</span>
+        </div>
+      </div>
+
+      <button type="button" id="btn-start-test" class="btn-portal-primary">
+        Enter Fullscreen & Begin Assessment
+      </button>
+    </div>
+  </div>
+
+  <!-- Screen 3: Live Assessment Workspace -->
+  <div id="screen-assessment" class="portal-screen" style="flex-direction: column;">
+    <!-- Top Bar -->
+    <header class="test-top-bar">
+      <div class="brand-cluster" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span class="brand-logo-pill">AuditAgent.ai</span>
+        <span id="header-job-title" style="font-weight: 600; font-size: 0.95rem;">Coding Assessment</span>
+        <select id="role-track-select" title="Switch between 20 Exam Tracks" style="background: #1e293b; border: 1px solid #334155; color: #38bdf8; padding: 4px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer;">
+          <option value="software_engineer">1. Software Engineer (DSA)</option>
+          <option value="data_engineer">2. Data Engineer (SQL/Pipelines)</option>
+          <option value="frontend_engineer">3. Frontend (JS/DOM)</option>
+          <option value="ml_engineer">4. AI / ML (Vectors)</option>
+          <option value="devops_sre">5. DevOps / SRE (Infra)</option>
+          <option value="fullstack_engineer">6. Full Stack (API/Auth)</option>
+          <option value="security_engineer">7. Security (AppSec)</option>
+          <option value="data_analyst">8. Data Analyst (BI SQL)</option>
+          <option value="qa_automation_engineer">9. QA SDET (Testing)</option>
+          <option value="mobile_engineer">10. Mobile (iOS/Android)</option>
+          <option value="cloud_architect">11. Cloud Architect (Multi-Region)</option>
+          <option value="database_administrator">12. Database Admin (DBA)</option>
+          <option value="blockchain_engineer">13. Blockchain & Web3 (Solidity)</option>
+          <option value="embedded_iot_engineer">14. Embedded & IoT (Firmware)</option>
+          <option value="nlp_engineer">15. NLP & LLM (GenAI)</option>
+          <option value="computer_vision_engineer">16. Computer Vision (CNN/IoU)</option>
+          <option value="platform_engineer">17. Platform & DevEx (GitOps)</option>
+          <option value="data_scientist">18. Data Scientist (Stats/AB)</option>
+          <option value="api_integrations_engineer">19. API Integrations (OAuth/Webhooks)</option>
+          <option value="game_developer">20. Game Dev & Graphics (Physics)</option>
+        </select>
+      </div>
+
+      <div class="test-status-cluster">
+        <div class="timer-pill" id="timer-display">
+          <span>⏱️</span>
+          <span id="time-remaining">30:00</span>
+        </div>
+
+        <div class="strike-pill">
+          <span>Strikes:</span>
+          <div class="strike-dot" id="dot-strike-1"></div>
+          <div class="strike-dot" id="dot-strike-2"></div>
+          <div class="strike-dot" id="dot-strike-3"></div>
+          <span id="strike-count-text" style="margin-left: 4px;">0 / 3</span>
+        </div>
+
+        <button type="button" id="btn-submit-assessment" class="btn-portal-primary" style="width: auto; padding: 8px 18px; font-size: 0.88rem;">
+          Submit Assessment
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace -->
+    <main class="assessment-workspace">
+      <!-- Question Panel -->
+      <section class="question-panel">
+        <!-- Section Header Banner -->
+        <div class="section-banner-bar" id="section-banner-bar" style="padding: 10px 18px; background: rgba(6, 182, 212, 0.08); border-bottom: 1px solid rgba(6, 182, 212, 0.2); display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="section-badge-icon" id="section-badge-icon" style="font-size: 1rem;">🔷</span>
+            <span class="section-title-display" id="section-title-display" style="font-weight: 700; font-size: 0.82rem; letter-spacing: 0.5px; color: #38bdf8; text-transform: uppercase;">
+              Section 1: Multiple Choice Questions (MCQs)
+            </span>
+          </div>
+          <span class="section-badge-pill" id="section-badge-pill" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #7dd3fc; font-weight: 600;">MCQ</span>
+        </div>
+
+        <nav class="question-tabs" id="question-tabs-bar">
+          <!-- Dynamic Question Tabs -->
+        </nav>
+        <div class="question-content" id="question-details-wrap">
+          <!-- Dynamic Question Body -->
+        </div>
+      </section>
+
+      <!-- Code Editor Panel -->
+      <section class="editor-panel" id="editor-panel">
+        <div class="editor-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <select id="editor-lang-select" class="select-lang">
+              <option value="python">Python 3</option>
+              <option value="sql">SQL (SQLite / PostgreSQL)</option>
+              <option value="javascript">JavaScript (Node.js)</option>
+              <option value="go">Go</option>
+              <option value="java">Java</option>
+            </select>
+            <button type="button" id="btn-reset-code" style="background: transparent; border: none; color: var(--text-muted); font-size: 0.8rem; cursor: pointer;">
+              ↺ Reset Starter Code
+            </button>
+          </div>
+
+          <button type="button" id="btn-run-code" class="btn-portal-primary" style="width: auto; padding: 6px 14px; font-size: 0.82rem; background: linear-gradient(135deg, #10b981, #059669);">
+            ▶ Run Tests (Ctrl+Enter)
+          </button>
+        </div>
+
+        <div class="code-container">
+          <textarea id="code-editor" class="code-textarea" spellcheck="false" placeholder="Write your solution here..."></textarea>
+        </div>
+
+        <!-- Sandbox Output Console -->
+        <div class="sandbox-console">
+          <div class="console-header">
+            <span>TEST RESULTS & CONSOLE</span>
+            <span id="sandbox-execution-time"></span>
+          </div>
+          <div class="console-body" id="sandbox-output-body">
+            <span style="color: var(--text-muted);">Click "Run Tests" to execute your solution in the server sandbox.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- MCQ Panel (Active for Multiple Choice Questions) -->
+      <section class="mcq-panel" id="mcq-panel" style="display: none;">
+        <div class="mcq-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: rgba(6,182,212,0.15); color: #22d3ee; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.5px;">MCQ</span>
+            <span style="font-size: 0.88rem; font-weight: 600; color: #f8fafc;">Select Your Answer</span>
+          </div>
+          <span style="font-size: 0.78rem; color: var(--text-muted);">Single Choice • Click option or press [A-D]</span>
+        </div>
+
+        <div class="mcq-content" id="mcq-options-container">
+          <!-- Dynamic MCQ Option Cards -->
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Action & Navigation Bar (Previous, Next, Question Indicator, Submit) -->
+    <footer class="test-bottom-bar">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button type="button" id="btn-prev-question" class="btn-nav">
+          <span>←</span> Previous
+        </button>
+      </div>
+
+      <div class="progress-cluster">
+        <span id="progress-indicator-text" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Question 1 of 5</span>
+        <div class="progress-dots-wrap" id="progress-dots-bar">
+          <!-- Progress dots -->
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button type="button" id="btn-next-question" class="btn-nav btn-nav-primary">
+          Next <span>→</span>
+        </button>
+        <button type="button" id="btn-footer-submit" class="btn-nav" style="display: inline-flex; width: auto; padding: 8px 18px; font-size: 0.88rem; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #4ade80;">
+          ✓ Submit
+        </button>
+      </div>
+    </footer>
+
+    <!-- Floating Proctoring HUD -->
+    <div class="floating-proctor-hud" id="proctor-hud">
+      <video id="live-proctor-video" autoplay muted playsinline></video>
+      <div class="hud-footer">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <div class="audio-dot" id="hud-audio-dot"></div>
+          <span id="hud-status-text">AI Proctoring Active</span>
+        </div>
+        <span style="font-family: monospace; font-size: 0.68rem;" id="hud-fps-label">LIVE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screen 4: Assessment Completed / Results Screen -->
+  <div id="screen-results" class="portal-screen">
+    <div class="center-card-wrap" style="max-width: 600px; text-align: center;">
+      <div style="font-size: 3rem; margin-bottom: 12px;">🎉</div>
+      <h2>Assessment Submitted!</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">
+        Thank you for completing your technical assessment. Your code and proctoring telemetry have been securely evaluated.
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0;">
+        <div style="background: #0f172a; padding: 20px; border-radius: 10px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Technical Score</div>
+          <div id="final-tech-score" style="font-size: 2.2rem; font-weight: 700; color: var(--accent-cyan); margin-top: 4px;">--</div>
+        </div>
+        <div style="background: #0f172a; padding: 20px; border-radius: 10px; border: 1px solid var(--border-color);">
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Integrity Score</div>
+          <div id="final-integrity-score" style="font-size: 2.2rem; font-weight: 700; color: var(--accent-green); margin-top: 4px;">--</div>
+        </div>
+      </div>
+
+      <div id="final-feedback-box" style="text-align: left; background: #0f172a; padding: 16px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.88rem; color: #cbd5e1; line-height: 1.5; margin-bottom: 24px;"></div>
+
+      <p style="color: var(--text-muted); font-size: 0.8rem;">
+        The recruitment team has been notified and will review your evaluation shortly.
+      </p>
+    </div>
+  </div>
+
+  <!-- Real-Time Violation Toast Banner -->
+  <div id="violation-toast" class="violation-banner">
+    <span>⚠️</span>
+    <span id="violation-toast-msg">Violation detected! Strike recorded.</span>
+  </div>
+
+  <!-- Auto-Termination Overlay Screen (Strike 4) -->
+  <div id="screen-terminated" class="auto-terminate-overlay">
+    <div class="hazard-badge">⛔</div>
+    <h1 style="color: var(--accent-red); font-size: 2rem; margin-bottom: 12px;">Assessment Terminated</h1>
+    <h3 style="color: #fca5a5; font-weight: 500; margin-bottom: 20px;">Multiple Integrity Violations Recorded (4 Strikes)</h3>
+    <p style="color: var(--text-muted); max-width: 500px; line-height: 1.6; font-size: 0.95rem; margin-bottom: 30px;" id="terminated-details-text">
+      The assessment environment was locked due to prohibited activities (e.g. copy/paste attempts, leaving fullscreen, or camera obstructions). Your session has been flagged for recruiter audit.
+    </p>
+    <div style="background: #1e1b2e; border: 1px solid rgba(239,68,68,0.4); padding: 14px 24px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #f87171;">
+      Status: INTEGRITY_DISQUALIFIED
+    </div>
+  </div>
+
+  <script src="/static/assessment.js"></script>
+</body>
+</html>

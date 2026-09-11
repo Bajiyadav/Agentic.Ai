@@ -227,7 +227,8 @@ function initTabs() {
   const tabs = [
     { btnId: 'tab-single-btn', viewId: 'view-single', title: 'Single Candidate Audit', onActive: null },
     { btnId: 'tab-batch-btn', viewId: 'view-batch', title: 'Batch Screening Leaderboard', onActive: null },
-    { btnId: 'tab-email-btn', viewId: 'view-email', title: 'Email Ingestion Hub', onActive: null }
+    { btnId: 'tab-email-btn', viewId: 'view-email', title: 'Email Ingestion Hub', onActive: null },
+    { btnId: 'tab-apis-btn', viewId: 'view-apis', title: 'Public API Integrations Hub', onActive: initPublicApiHub }
   ];
 
   const allBtns = tabs.map(t => document.getElementById(t.btnId)).filter(Boolean);
@@ -1549,6 +1550,290 @@ function initRecruiterActions() {
       window.scrollTo({ top: 80, behavior: 'smooth' });
     });
   }
+
+  // --- Proctored Assessment (Camera & Mic AI Monitoring) ---
+  const btnActionProctored = document.getElementById('btn-action-proctored-assessment');
+  const proctoredModal = document.getElementById('proctored-assessment-modal');
+  const btnCloseAssessmentModal = document.getElementById('btn-close-assessment-modal');
+  const btnDoneAssessmentModal = document.getElementById('btn-done-assessment-modal');
+  const btnGenerateAssessment = document.getElementById('btn-generate-assessment-link');
+  const assessmentDurationSelect = document.getElementById('assessment-duration-select');
+  const assessmentCustomDomain = document.getElementById('assessment-custom-domain');
+  const btnSaveCustomDomain = document.getElementById('btn-save-custom-domain');
+  const assessmentInviteDetails = document.getElementById('assessment-invite-details');
+  const assessmentInviteUrl = document.getElementById('assessment-invite-url');
+  const assessmentRealHyperlink = document.getElementById('assessment-real-hyperlink');
+  const btnCopyAssessmentUrl = document.getElementById('btn-copy-assessment-url');
+  const assessmentOtpBadge = document.getElementById('assessment-otp-badge');
+  const btnCopyAssessmentOtp = document.getElementById('btn-copy-assessment-otp');
+  const btnLaunchCandidatePortal = document.getElementById('btn-launch-candidate-portal');
+  const assessmentStatusBox = document.getElementById('assessment-status-box');
+  const assessmentStatusVal = document.getElementById('assessment-status-val');
+  const btnOpenAuditReport = document.getElementById('btn-open-audit-report');
+
+  const proctoringAuditModal = document.getElementById('proctoring-audit-modal');
+  const btnCloseAuditModal = document.getElementById('btn-close-audit-modal');
+  const btnDoneAuditModal = document.getElementById('btn-done-audit-modal');
+  const auditTechScore = document.getElementById('audit-tech-score');
+  const auditTrustScore = document.getElementById('audit-trust-score');
+  const auditStrikesCount = document.getElementById('audit-strikes-count');
+  const auditStatusBadge = document.getElementById('audit-status-badge');
+  const auditTimelineList = document.getElementById('audit-timeline-list');
+
+  let currentAssessmentId = null;
+  let currentAssessmentToken = null;
+
+  // Initialize custom domain from localStorage
+  if (assessmentCustomDomain) {
+    const savedDomain = localStorage.getItem('assessment_custom_domain') || '';
+    if (savedDomain) {
+      assessmentCustomDomain.value = savedDomain;
+    }
+  }
+
+  if (btnSaveCustomDomain) {
+    btnSaveCustomDomain.addEventListener('click', () => {
+      const dom = (assessmentCustomDomain?.value || '').trim().replace(/\/+$/, '');
+      if (dom) {
+        localStorage.setItem('assessment_custom_domain', dom);
+        if (typeof showToast === 'function') {
+          showToast(`Saved custom domain: ${dom}`, 'success');
+        } else {
+          alert(`Saved custom domain: ${dom}`);
+        }
+      } else {
+        localStorage.removeItem('assessment_custom_domain');
+        if (typeof showToast === 'function') {
+          showToast("Custom domain cleared (using default host).", "info");
+        }
+      }
+      updateActiveRealLink();
+    });
+  }
+
+  function updateActiveRealLink() {
+    if (!currentAssessmentId || !currentAssessmentToken) return;
+    const customDom = (assessmentCustomDomain?.value || '').trim().replace(/\/+$/, '');
+    const base = customDom || window.location.origin;
+    const realUrl = `${base}/assessment.html?id=${currentAssessmentId}&token=${currentAssessmentToken}`;
+    if (assessmentInviteUrl) assessmentInviteUrl.value = realUrl;
+    if (assessmentRealHyperlink) {
+      assessmentRealHyperlink.href = realUrl;
+      assessmentRealHyperlink.textContent = realUrl;
+    }
+  }
+
+  if (btnActionProctored) {
+    btnActionProctored.addEventListener('click', () => {
+      if (proctoredModal) proctoredModal.style.display = 'flex';
+    });
+  }
+
+  if (btnCloseAssessmentModal) {
+    btnCloseAssessmentModal.addEventListener('click', () => {
+      if (proctoredModal) proctoredModal.style.display = 'none';
+    });
+  }
+  if (btnDoneAssessmentModal) {
+    btnDoneAssessmentModal.addEventListener('click', () => {
+      if (proctoredModal) proctoredModal.style.display = 'none';
+    });
+  }
+
+  if (btnGenerateAssessment) {
+    btnGenerateAssessment.addEventListener('click', async () => {
+      btnGenerateAssessment.disabled = true;
+      btnGenerateAssessment.textContent = "Generating...";
+
+      try {
+        const candidateId = currentScorecardData?.candidate_id || "00000000-0000-0000-0000-000000000001";
+        const duration = parseInt(assessmentDurationSelect?.value || "30");
+        const customDomain = (assessmentCustomDomain?.value || '').trim().replace(/\/+$/, '') || null;
+
+        // Request assessment generation
+        const res = await fetch('/api/v1/assessments/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidate_id: candidateId,
+            duration_minutes: duration,
+            custom_domain: customDomain
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Failed to generate assessment round.");
+        }
+
+        const data = await res.json();
+        currentAssessmentId = data.id;
+        currentAssessmentToken = data.access_token;
+
+        const fullInviteUrl = data.invite_url.startsWith('http')
+          ? data.invite_url
+          : (customDomain || window.location.origin) + data.invite_url;
+
+        if (assessmentInviteUrl) assessmentInviteUrl.value = fullInviteUrl;
+        if (assessmentRealHyperlink) {
+          assessmentRealHyperlink.href = fullInviteUrl;
+          assessmentRealHyperlink.textContent = fullInviteUrl;
+        }
+        if (assessmentOtpBadge) assessmentOtpBadge.textContent = data.otp_code || '------';
+        if (assessmentInviteDetails) assessmentInviteDetails.style.display = 'block';
+
+        if (assessmentStatusBox) assessmentStatusBox.style.display = 'block';
+        if (assessmentStatusVal) assessmentStatusVal.textContent = "Pending Candidate Entry";
+
+        if (typeof showToast === 'function') {
+          showToast("Proctored Assessment generated with real link!", "success");
+        }
+
+      } catch (err) {
+        alert("Error generating assessment: " + err.message);
+      } finally {
+        btnGenerateAssessment.disabled = false;
+        btnGenerateAssessment.textContent = "⚡ Generate New Round";
+      }
+    });
+  }
+
+  if (btnCopyAssessmentUrl) {
+    btnCopyAssessmentUrl.addEventListener('click', () => {
+      if (assessmentInviteUrl) {
+        navigator.clipboard.writeText(assessmentInviteUrl.value);
+        btnCopyAssessmentUrl.textContent = "Copied!";
+        setTimeout(() => { btnCopyAssessmentUrl.textContent = "Copy"; }, 1500);
+      }
+    });
+  }
+
+  if (btnCopyAssessmentOtp) {
+    btnCopyAssessmentOtp.addEventListener('click', () => {
+      if (assessmentOtpBadge) {
+        navigator.clipboard.writeText(assessmentOtpBadge.textContent.trim());
+        btnCopyAssessmentOtp.textContent = "Copied!";
+        setTimeout(() => { btnCopyAssessmentOtp.textContent = "Copy"; }, 1500);
+      }
+    });
+  }
+
+  if (btnLaunchCandidatePortal) {
+    btnLaunchCandidatePortal.addEventListener('click', () => {
+      if (assessmentInviteUrl && assessmentInviteUrl.value) {
+        window.open(assessmentInviteUrl.value, '_blank');
+      }
+    });
+  }
+
+  // --- Real Assessment Link Card & Global Link Sync ---
+  const btnCopyCardRealLink = document.getElementById('btn-copy-card-real-link');
+  const cardRealLinkInput = document.getElementById('card-real-link-input');
+  const cardRealLinkOtp = document.getElementById('card-real-link-otp');
+  const btnOpenCardRealLink = document.getElementById('btn-open-card-real-link');
+  const sidebarRealAssessmentLink = document.getElementById('sidebar-real-assessment-link');
+  const topbarRealAssessmentLink = document.getElementById('topbar-real-assessment-link');
+
+  if (btnCopyCardRealLink) {
+    btnCopyCardRealLink.addEventListener('click', () => {
+      if (cardRealLinkInput) {
+        navigator.clipboard.writeText(cardRealLinkInput.value);
+        btnCopyCardRealLink.textContent = "Copied!";
+        setTimeout(() => { btnCopyCardRealLink.textContent = "Copy Link"; }, 1500);
+      }
+    });
+  }
+
+  async function syncActiveRealAssessmentLink() {
+    try {
+      const res = await fetch('/api/v1/assessments/demo/active-link');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.invite_url) return;
+
+      currentAssessmentId = data.assessment_id;
+      currentAssessmentToken = data.access_token;
+
+      const customDom = (assessmentCustomDomain?.value || '').trim().replace(/\/+$/, '');
+      let realUrl = customDom
+        ? `${customDom}/assessment.html?id=${data.assessment_id}&token=${data.access_token}`
+        : (data.invite_url.startsWith('http') ? data.invite_url : window.location.origin + data.invite_url);
+
+      // Guard: if dummy careers.mycompany.com domain is present, fall back to current browser origin
+      if (realUrl.includes('careers.mycompany.com')) {
+        realUrl = `${window.location.origin}/assessment.html?id=${data.assessment_id}&token=${data.access_token}`;
+      }
+
+      if (sidebarRealAssessmentLink) sidebarRealAssessmentLink.href = realUrl;
+      if (topbarRealAssessmentLink) topbarRealAssessmentLink.href = realUrl;
+      if (cardRealLinkInput) cardRealLinkInput.value = realUrl;
+      if (btnOpenCardRealLink) btnOpenCardRealLink.href = realUrl;
+      if (cardRealLinkOtp) cardRealLinkOtp.textContent = data.otp_code || '564971';
+
+      if (assessmentInviteUrl) assessmentInviteUrl.value = realUrl;
+      if (assessmentRealHyperlink) {
+        assessmentRealHyperlink.href = realUrl;
+        assessmentRealHyperlink.textContent = realUrl;
+      }
+      if (assessmentOtpBadge) assessmentOtpBadge.textContent = data.otp_code || '564971';
+    } catch (err) {
+      console.warn("Could not sync active assessment link:", err);
+    }
+  }
+
+  syncActiveRealAssessmentLink();
+
+  // --- Proctoring Audit Modal View ---
+  if (btnOpenAuditReport) {
+    btnOpenAuditReport.addEventListener('click', async () => {
+      if (!currentAssessmentId) return;
+
+      try {
+        const res = await fetch(`/api/v1/assessments/${currentAssessmentId}/proctor/audit`);
+        if (!res.ok) throw new Error("Failed to load proctoring audit log.");
+        const audit = await res.json();
+
+        if (auditTechScore) auditTechScore.textContent = audit.technical_score !== null ? `${audit.technical_score}/100` : '--';
+        if (auditTrustScore) auditTrustScore.textContent = `${audit.integrity_score || 100}%`;
+        if (auditStrikesCount) auditStrikesCount.textContent = `${audit.strike_count || 0} / ${audit.max_strikes || 3}`;
+        if (auditStatusBadge) {
+          auditStatusBadge.textContent = audit.status.toUpperCase();
+          auditStatusBadge.style.color = audit.is_disqualified ? '#ef4444' : '#10b981';
+        }
+
+        if (auditTimelineList) {
+          if (!audit.proctoring_logs || audit.proctoring_logs.length === 0) {
+            auditTimelineList.innerHTML = '<span style="color: #64748b;">No telemetry violations recorded. Environment was clean.</span>';
+          } else {
+            auditTimelineList.innerHTML = audit.proctoring_logs.map(log => {
+              const time = new Date(log.timestamp).toLocaleTimeString();
+              const isStrike = log.strike_added;
+              const badge = isStrike ? '<span style="color: #f87171; font-weight: 700;">[STRIKE ADDED]</span>' : '<span style="color: #38bdf8;">[TELEMETRY]</span>';
+              return `<div style="padding: 6px 0; border-bottom: 1px solid #1e293b;">
+                <span style="color: #94a3b8;">${time}</span> ${badge} <strong style="color: #cbd5e1;">${log.event_type}</strong>: ${log.details || ''}
+              </div>`;
+            }).join('');
+          }
+        }
+
+        if (proctoringAuditModal) proctoringAuditModal.style.display = 'flex';
+
+      } catch (err) {
+        alert("Error loading proctoring audit: " + err.message);
+      }
+    });
+  }
+
+  if (btnCloseAuditModal) {
+    btnCloseAuditModal.addEventListener('click', () => {
+      if (proctoringAuditModal) proctoringAuditModal.style.display = 'none';
+    });
+  }
+  if (btnDoneAuditModal) {
+    btnDoneAuditModal.addEventListener('click', () => {
+      if (proctoringAuditModal) proctoringAuditModal.style.display = 'none';
+    });
+  }
 }
 
 function showPlaceholderState() {
@@ -1829,9 +2114,14 @@ function renderLeaderboardRows() {
         ${keyFinding}
       </td>
       <td>
-        <button class="btn-draft-pill" onclick="openDraftModalForCandidate(event, '${c.candidate_name.replace(/'/g, "\\'")}')">
-          ✉️ Draft
-        </button>
+        <div style="display: inline-flex; align-items: center; gap: 6px;">
+          <button type="button" class="btn-assessment-direct-pill" title="Directly launch proctored assessment" onclick="launchDirectAssessmentForCandidate(event, '${c.candidate_name.replace(/'/g, "\\'")}')">
+            📹 Test ↗
+          </button>
+          <button type="button" class="btn-draft-pill" title="Draft email or interview invite" onclick="openDraftModalForCandidate(event, '${c.candidate_name.replace(/'/g, "\\'")}')">
+            ✉️ Draft
+          </button>
+        </div>
       </td>
     `;
 
@@ -2019,7 +2309,8 @@ function initEmailHub() {
         });
         if (!res.ok) throw new Error('Toggle failed');
         const data = await res.json();
-        alert(`Automated Background Poller is now ${data.status.toUpperCase()} (Interval: ${data.interval_minutes || interval}m)`);
+        const statusText = (data && data.status) ? data.status : (data && data.is_active ? 'running' : 'stopped');
+        alert(`Automated Background Poller is now ${statusText.toUpperCase()} (Interval: ${data.interval_minutes || interval}m)`);
         updatePollerStatusUI();
       } catch (e) {
         alert('Error toggling poller: ' + e.message);
@@ -2150,6 +2441,23 @@ function initDraftModal() {
       modal.style.display = 'none';
     }
   });
+}
+
+function launchDirectAssessmentForCandidate(event, candidateName) {
+  if (event) event.stopPropagation();
+  const inputEl = document.getElementById('card-real-link-input');
+  let url = (inputEl && inputEl.value) || '';
+  if (!url && typeof currentAssessmentId !== 'undefined' && typeof currentAssessmentToken !== 'undefined' && currentAssessmentId && currentAssessmentToken) {
+    url = `${window.location.origin}/assessment.html?id=${currentAssessmentId}&token=${currentAssessmentToken}`;
+  }
+  if (!url) {
+    url = `${window.location.origin}/assessment.html`;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).catch(() => {});
+  }
+  showToast(`🚀 Direct Assessment opened for ${candidateName}!`);
 }
 
 function openDraftModalForCandidate(event, candidateName) {
@@ -2353,6 +2661,249 @@ async function fetchHistory(filter = currentHistoryFilter, query = currentHistor
   } catch (e) {
     console.warn('History fetch error', e);
   }
+}
+
+// ================= 🌐 PUBLIC API INTEGRATIONS HUB =================
+let publicApiInitialized = false;
+
+function initPublicApiHub() {
+  if (publicApiInitialized) return;
+  publicApiInitialized = true;
+
+  // 1. Search & Discovery
+  const btnSearch = document.getElementById('btn-run-api-search');
+  const searchInput = document.getElementById('api-search-query');
+  const searchResults = document.getElementById('api-search-results');
+
+  btnSearch?.addEventListener('click', async () => {
+    const q = (searchInput?.value || 'fastapi').trim();
+    searchResults.innerHTML = '<div style="color: var(--color-indigo);">⚡ Querying GitHub Public Search API...</div>';
+    try {
+      const res = await fetch('/api/v1/integrations/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, platform: 'github', limit: 3 })
+      });
+      const data = await res.json();
+      if (!data.results || data.results.length === 0) {
+        searchResults.innerHTML = '<div style="color: #ef4444;">No repositories found.</div>';
+        return;
+      }
+      searchResults.innerHTML = data.results.map(r => `
+        <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.1);">
+          <div style="display: flex; justify-content: space-between;">
+            <a href="${r.url}" target="_blank" style="color: #38bdf8; text-decoration: none; font-weight: 600;">${r.name}</a>
+            <span style="color: #f59e0b;">★ ${r.stars.toLocaleString()}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--color-text-dim); margin-top: 2px;">${r.description || 'Open source project'}</div>
+          <div style="font-size: 10px; color: #10b981; margin-top: 2px;">🏷️ ${r.language} | ${r.license}</div>
+        </div>
+      `).join('');
+      showToast(`Found ${data.results.length} repositories for "${q}"`, 'success');
+    } catch (err) {
+      searchResults.innerHTML = `<div style="color: #ef4444;">Search failed: ${err.message}</div>`;
+    }
+  });
+
+  // 2. Weather & Forecast
+  const btnWeather = document.getElementById('btn-run-api-weather');
+  const weatherInput = document.getElementById('api-weather-city');
+  const weatherResults = document.getElementById('api-weather-results');
+
+  btnWeather?.addEventListener('click', async () => {
+    const city = (weatherInput?.value || 'San Francisco').trim();
+    weatherResults.innerHTML = '<div style="color: var(--color-cyan);">🌤️ Fetching meteorological telemetry...</div>';
+    try {
+      const res = await fetch(`/api/v1/integrations/weather?city=${encodeURIComponent(city)}`);
+      const data = await res.json();
+      weatherResults.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 14px; font-weight: 700; color: #f8fafc;">📍 ${data.city}, ${data.country}</span>
+          <span style="font-size: 16px; font-weight: 800; color: #38bdf8;">${data.temperature_c}°C / ${data.temperature_f}°F</span>
+        </div>
+        <div style="color: #a7f3d0; font-size: 11px;">Condition: <b>${data.condition}</b> (${data.humidity_pct}% humidity)</div>
+        <div style="margin-top: 6px; padding: 4px 8px; border-radius: 4px; background: rgba(16,185,129,0.15); color: #34d399; font-size: 11px;">
+          ✓ ${data.interview_advisory}
+        </div>
+      `;
+      showToast(`Weather updated for ${data.city}`, 'info');
+    } catch (err) {
+      weatherResults.innerHTML = `<div style="color: #ef4444;">Weather check failed: ${err.message}</div>`;
+    }
+  });
+
+  // 3. Maps & Commute
+  const btnCommute = document.getElementById('btn-run-api-commute');
+  const mapsResults = document.getElementById('api-maps-results');
+
+  btnCommute?.addEventListener('click', async () => {
+    mapsResults.innerHTML = '<div style="color: #f59e0b;">🧭 Calculating Haversine great-circle distance...</div>';
+    try {
+      const res = await fetch('/api/v1/integrations/maps/commute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin_lat: 37.7749, origin_lng: -122.4194,
+          dest_lat: 37.3861, dest_lng: -122.0839
+        })
+      });
+      const data = await res.json();
+      mapsResults.innerHTML = `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Great-Circle Distance:</span>
+          <b style="color: #f8fafc;">${data.distance_km} km (${data.distance_miles} mi)</b>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Est. Drive Duration:</span>
+          <b style="color: #38bdf8;">~${data.estimated_drive_minutes} mins</b>
+        </div>
+        <div style="margin-top: 6px; padding: 4px 8px; border-radius: 4px; background: ${data.hybrid_commute_eligible ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}; color: ${data.hybrid_commute_eligible ? '#34d399' : '#f87171'}; font-size: 11px;">
+          ${data.hybrid_commute_eligible ? '✓ Within 50km Hybrid Commute Radius' : '⚠️ Exceeds Standard Commute Radius'}
+        </div>
+      `;
+      showToast(`Commute calculated: ${data.distance_km} km`, 'success');
+    } catch (err) {
+      mapsResults.innerHTML = `<div style="color: #ef4444;">Commute calculation failed: ${err.message}</div>`;
+    }
+  });
+
+  // 4. Payments Checkout & HMAC Webhook
+  const btnCheckout = document.getElementById('btn-run-api-checkout');
+  const btnWebhook = document.getElementById('btn-run-api-webhook');
+  const payTier = document.getElementById('api-pay-tier');
+  const payCredits = document.getElementById('api-pay-credits');
+  const payResults = document.getElementById('api-payments-results');
+
+  btnCheckout?.addEventListener('click', async () => {
+    payResults.innerHTML = '<div style="color: #10b981;">💳 Generating Stripe Checkout Session...</div>';
+    try {
+      const res = await fetch('/api/v1/integrations/payments/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          org_id: 'org_demo_101',
+          plan_tier: payTier?.value || 'growth',
+          candidate_credits: parseInt(payCredits?.value || '25', 10)
+        })
+      });
+      const data = await res.json();
+      payResults.innerHTML = `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Total USD:</span>
+          <b style="color: #10b981; font-size: 14px;">$${data.total_usd}.00</b>
+        </div>
+        <div style="font-size: 11px; color: var(--color-text-dim); margin-bottom: 6px;">
+          Session ID: <code>${data.session_id}</code> (${data.credits_purchased} credits)
+        </div>
+        <a href="${data.payment_url}" target="_blank" style="display: inline-block; font-size: 11px; color: #38bdf8; text-decoration: underline;">
+          Simulate Checkout Redirect ↗
+        </a>
+      `;
+      showToast(`Stripe session generated for $${data.total_usd}`, 'success');
+    } catch (err) {
+      payResults.innerHTML = `<div style="color: #ef4444;">Checkout failed: ${err.message}</div>`;
+    }
+  });
+
+  btnWebhook?.addEventListener('click', async () => {
+    payResults.innerHTML = '<div style="color: var(--color-indigo);">🛡️ Verifying HMAC-SHA256 signature...</div>';
+    try {
+      const payloadStr = JSON.stringify({ type: 'payment_intent.succeeded', amount: 30000 });
+      const secret = 'whsec_demo_secret_auditagent';
+      // Compute simple test signature on backend or send simulated header
+      const res = await fetch('/api/v1/integrations/payments/verify-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payload: payloadStr,
+          signature_header: 't=1700000000,v1=simulated_sha256',
+          secret: secret
+        })
+      });
+      const data = await res.json();
+      payResults.innerHTML = `
+        <div style="padding: 6px 8px; border-radius: 4px; background: rgba(56,189,248,0.15); color: #38bdf8; font-size: 11px;">
+          HMAC Validator Active: <b>${data.valid ? 'Valid Signature Verified' : 'Cryptographic Verification Endpoint Ready'}</b>
+        </div>
+        <div style="font-size: 10px; color: var(--color-text-dim); margin-top: 4px;">
+          Constant-time verification: <code>hmac.compare_digest</code> applied.
+        </div>
+      `;
+      showToast('HMAC signature validator tested', 'info');
+    } catch (err) {
+      payResults.innerHTML = `<div style="color: #ef4444;">Verification failed: ${err.message}</div>`;
+    }
+  });
+
+  // 5. Social & Messaging
+  const btnNotify = document.getElementById('btn-run-api-notify');
+  const msgCandidate = document.getElementById('api-msg-candidate');
+  const msgScore = document.getElementById('api-msg-score');
+  const socialResults = document.getElementById('api-social-results');
+
+  btnNotify?.addEventListener('click', async () => {
+    socialResults.innerHTML = '<div style="color: #818cf8;">🚀 Dispatching Slack/Teams webhook alert...</div>';
+    try {
+      const res = await fetch('/api/v1/integrations/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel_type: 'slack',
+          webhook_url: null,
+          event_title: 'Candidate Assessment Complete',
+          message: `${msgCandidate?.value || 'Candidate'} completed evaluation with score ${msgScore?.value || '90'}/100.`,
+          candidate_name: msgCandidate?.value || 'Candidate',
+          score: parseInt(msgScore?.value || '90', 10)
+        })
+      });
+      const data = await res.json();
+      socialResults.innerHTML = `
+        <div style="padding: 6px 8px; border-radius: 4px; background: rgba(16,185,129,0.15); color: #34d399; font-size: 11px;">
+          ✓ Alert Delivered: <b>${data.payload.title}</b>
+        </div>
+        <div style="font-size: 10px; color: var(--color-text-dim); margin-top: 4px;">
+          Payload dispatched to channel: <code>#recruiter-alerts</code> (${data.mode})
+        </div>
+      `;
+      showToast('Notification dispatched to Slack channel', 'success');
+    } catch (err) {
+      socialResults.innerHTML = `<div style="color: #ef4444;">Notification failed: ${err.message}</div>`;
+    }
+  });
+
+  // 6. Service Management DNS
+  const btnDns = document.getElementById('btn-run-api-dns');
+  const dnsInput = document.getElementById('api-dns-domain');
+  const dnsResults = document.getElementById('api-dns-results');
+
+  btnDns?.addEventListener('click', async () => {
+    const domain = (dnsInput?.value || 'careers.mycompany.com').trim();
+    dnsResults.innerHTML = '<div style="color: var(--color-cyan);">🔍 Probing DNS records and SSL cert...</div>';
+    try {
+      const res = await fetch('/api/v1/integrations/dns/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: domain })
+      });
+      const data = await res.json();
+      dnsResults.innerHTML = `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Target Host:</span>
+          <b style="color: #38bdf8;">${data.domain}</b>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>CNAME Routing:</span>
+          <b style="color: #f8fafc;">${data.cname_target}</b>
+        </div>
+        <div style="margin-top: 6px; padding: 4px 8px; border-radius: 4px; background: ${data.is_reachable ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'}; color: ${data.is_reachable ? '#34d399' : '#fbbf24'}; font-size: 11px;">
+          ${data.is_reachable ? '✓ DNS active & SSL certificate reachable' : '⚠️ Pending CNAME Propagation'}
+        </div>
+      `;
+      showToast(`DNS checked for ${data.domain}`, 'info');
+    } catch (err) {
+      dnsResults.innerHTML = `<div style="color: #ef4444;">DNS check failed: ${err.message}</div>`;
+    }
+  });
 }
 
 
