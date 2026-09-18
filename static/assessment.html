@@ -1779,6 +1779,37 @@
             </div>
 
             <div class="student-exams-list" id="student-exams-list">
+              <!-- Campus & Graduate 4-Module Assessment (English, Logic, Quant, Data Structures) -->
+              <div class="student-exam-item" id="exam-item-campus" style="cursor: pointer; border-left: 4px solid #06b6d4; background: linear-gradient(135deg, rgba(6,182,212,0.06), rgba(37,99,235,0.04));">
+                <div class="student-date-badge" style="background: rgba(6,182,212,0.12); border-color: rgba(6,182,212,0.35);">
+                  <span class="date-month" style="font-size: 0.58rem; color: #0891b2; font-weight: 800;">4 MOD</span>
+                  <span class="date-day" style="color: #0891b2;">56Q</span>
+                </div>
+                <div class="student-exam-info">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #0891b2; background: rgba(6,182,212,0.15); padding: 2px 8px; border-radius: 4px;">GRADUATE &amp; CAMPUS HIRE</span>
+                    <span style="font-size: 0.72rem; color: #64748b;">SHL-Standard 4 Modules</span>
+                  </div>
+                  <h3 class="student-exam-title">Campus &amp; Graduate Technical Aptitude · 4 Modules</h3>
+                  <p class="student-exam-meta">
+                    <span style="font-weight: 600; color: #0f172a;">CAMP-101</span>
+                    <span class="meta-dot">·</span>
+                    <span>📖 English (12Q/15m)</span>
+                    <span class="meta-dot">·</span>
+                    <span>🧩 Logic (12Q/15m)</span>
+                    <span class="meta-dot">·</span>
+                    <span>📐 Quant (14Q/20m)</span>
+                    <span class="meta-dot">·</span>
+                    <span style="color: #0891b2; font-weight: 600;">💻 Data Structures (18Q/20m)</span>
+                    <span class="meta-dot">·</span>
+                    <span>⏳ 70 Mins Total</span>
+                  </p>
+                </div>
+                <div class="student-exam-action">
+                  <button type="button" class="badge-status status-ready" id="btn-exam-ready-campus" style="background: linear-gradient(135deg, #06b6d4, #2563eb); color: #ffffff; border: none;">Start Campus Exam →</button>
+                </div>
+              </div>
+
               <!-- Round 1: Algorithmic Coding & Systems Sandbox (Ready) -->
               <div class="student-exam-item" id="exam-item-1" style="cursor: pointer;">
                 <div class="student-date-badge">
@@ -2359,7 +2390,8 @@
         <span class="brand-logo-pill">AuditAgent.ai</span>
         <span id="header-assessment-title" style="font-weight: 700; font-size: 0.92rem; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.25);">Assessment: Technical Assessment</span>
         <span id="header-job-title" style="font-weight: 600; font-size: 0.88rem; color: var(--text-muted);">Position: Engineering Role</span>
-        <select id="role-track-select" title="Switch between 20 Exam Tracks" style="background: #1e293b; border: 1px solid #334155; color: #38bdf8; padding: 4px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer;">
+        <select id="role-track-select" title="Switch between Exam Tracks" style="background: #1e293b; border: 1px solid #334155; color: #38bdf8; padding: 4px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer;">
+          <option value="campus_graduate_engineer" selected>🎓 Campus &amp; Graduate Engineer (Aptitude &amp; Core CS · 4 Modules)</option>
           <option value="software_engineer">1. Software Engineer (DSA)</option>
           <option value="data_engineer">2. Data Engineer (SQL/Pipelines)</option>
           <option value="frontend_engineer">3. Frontend (JS/DOM)</option>

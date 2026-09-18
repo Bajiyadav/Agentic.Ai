@@ -16,6 +16,7 @@ from src.services.exam_catalog import (
     EXAM_TRACKS_20 as EXAM_TRACKS,
     QUESTION_MODALITIES,
 )
+from src.services.campus_assessment_catalog import CAMPUS_GRADUATE_TRACK
 
 class AssessmentPackage(BaseModel):
     job_title: str
@@ -31,8 +32,8 @@ class AssessmentEvaluationResult(BaseModel):
 
 
 def get_exam_tracks_meta() -> List[Dict[str, Any]]:
-    """Returns summary metadata for all 20 available exam tracks with 5 challenge modalities each."""
-    return [
+    """Returns summary metadata for all exam tracks including Campus & Graduate track."""
+    tracks_meta = [
         {
             "track_id": data["track_id"],
             "title": data["title"],
@@ -40,6 +41,7 @@ def get_exam_tracks_meta() -> List[Dict[str, Any]]:
             "description": data["description"],
             "skills": data["skills"],
             "total_questions": len(data["questions"]),
+            "duration_minutes": 30,
             "challenge_types": [
                 "Multiple Choice (MCQ - Core Concepts)",
                 "Multiple Choice (MCQ - Architecture)",
@@ -54,6 +56,25 @@ def get_exam_tracks_meta() -> List[Dict[str, Any]]:
         }
         for data in EXAM_TRACKS.values()
     ]
+    # Add specialized Campus & Graduate Hire track
+    tracks_meta.append({
+        "track_id": CAMPUS_GRADUATE_TRACK["track_id"],
+        "title": CAMPUS_GRADUATE_TRACK["title"],
+        "badge": CAMPUS_GRADUATE_TRACK["badge"],
+        "description": CAMPUS_GRADUATE_TRACK["description"],
+        "skills": CAMPUS_GRADUATE_TRACK["skills"],
+        "total_questions": len(CAMPUS_GRADUATE_TRACK["questions"]),
+        "duration_minutes": CAMPUS_GRADUATE_TRACK["duration_minutes"],
+        "challenge_types": [
+            "English Comprehension (Vocabulary, Grammar & Reading)",
+            "Logical Ability (Deductive, Syllogisms & Puzzles)",
+            "Quantitative Ability (Arithmetic, Algebra & Percentages)",
+            "Data Structures (Arrays, Trees, Graphs, Sorting & Complexity)"
+        ],
+        "sections": CAMPUS_GRADUATE_TRACK["sections"],
+        "section_breakdown": CAMPUS_GRADUATE_TRACK["section_breakdown"]
+    })
+    return tracks_meta
 
 
 def get_question_modalities() -> List[Dict[str, str]]:
@@ -63,14 +84,22 @@ def get_question_modalities() -> List[Dict[str, str]]:
 
 def get_questions_for_track(track_id: str) -> List[AssessmentQuestion]:
     """Retrieve full AssessmentQuestion objects for the specified track."""
+    if track_id == "campus_graduate_engineer":
+        return list(CAMPUS_GRADUATE_TRACK["questions"])
     track = EXAM_TRACKS.get(track_id) or EXAM_TRACKS.get("software_engineer")
     return list(track["questions"])
 
 
 def detect_exam_track(job_title: str, required_skills: Optional[List[str]] = None) -> str:
-    """Infers the most appropriate exam track from job title and required skills across 20 roles."""
+    """Infers the most appropriate exam track from job title and required skills across roles."""
     t = (job_title or "").lower()
     s = [x.lower() for x in (required_skills or [])]
+
+    # Campus & Graduate Trainee detection
+    if any(k in t for k in ["graduate", "campus", "entry level", "entry-level", "fresher", "intern", "junior", "trainee", "associate software engineer", "associate engineer"]):
+        return "campus_graduate_engineer"
+    if any(k in s for k in ["aptitude", "quantitative ability", "logical reasoning", "english comprehension", "campus hiring"]):
+        return "campus_graduate_engineer"
 
     # Specific role checks
     if any(k in t for k in ["blockchain", "web3", "solidity", "smart contract", "crypto", "ethereum", "defi"]):
@@ -144,6 +173,8 @@ def _get_preset_questions(
 ) -> List[AssessmentQuestion]:
     """Resolves questions for the requested or auto-detected exam track."""
     track_key = role_track or detect_exam_track(job_title, skills)
+    if track_key == "campus_graduate_engineer":
+        return list(CAMPUS_GRADUATE_TRACK["questions"])
     track = EXAM_TRACKS.get(track_key, EXAM_TRACKS["software_engineer"])
     return track["questions"]
 
@@ -155,10 +186,12 @@ def generate_technical_assessment(
     role_track: Optional[str] = None
 ) -> AssessmentPackage:
     """Generates a customized technical assessment tailored to role track and JD."""
-    questions = _get_preset_questions(job_title, required_skills, duration_minutes, role_track)
+    track_key = role_track or detect_exam_track(job_title, required_skills)
+    eff_duration = 70 if track_key == "campus_graduate_engineer" and duration_minutes == 30 else duration_minutes
+    questions = _get_preset_questions(job_title, required_skills, eff_duration, track_key)
     return AssessmentPackage(
         job_title=job_title,
-        duration_minutes=duration_minutes,
+        duration_minutes=eff_duration,
         total_questions=len(questions),
         questions=questions
     )
@@ -182,7 +215,7 @@ def evaluate_assessment_submission(
             feedback="Assessment was submitted with no answers recorded."
         )
 
-    points_per_question = 100 // max(1, len(questions))
+    points_per_question = 100.0 / max(1, len(questions))
 
     for q in questions:
         q_id = q.get("id")
@@ -263,7 +296,7 @@ def evaluate_assessment_submission(
         else:
             weaknesses.append(f"Could elaborate deeper on {q.get('title')} (e.g. {expected[0] if expected else 'concepts'}).")
 
-    final_score = min(100, max(15, total_score))
+    final_score = min(100, max(15, round(total_score)))
     feedback = (
         f"Candidate achieved {final_score}/100 across {len(questions)} technical challenges. "
         f"{'Demonstrated strong engineering problem-solving and code execution.' if final_score >= 75 else 'Moderate performance; check edge cases and error boundaries.'}"

@@ -163,6 +163,42 @@
       }
     };
 
+    const btnExamReadyCampus = document.getElementById('btn-exam-ready-campus');
+    const examItemCampus = document.getElementById('exam-item-campus');
+    const handleLaunchCampusExam = async (e) => {
+      if (e) e.stopPropagation();
+      const roleTrackSelect = document.getElementById('role-track-select');
+      if (roleTrackSelect) roleTrackSelect.value = 'campus_graduate_engineer';
+      try {
+        const res = await fetch('/api/v1/assessments/demo/candidate-view?role=campus_graduate_engineer');
+        if (res.ok) {
+          const data = await res.json();
+          state.questions = data.questions || [];
+          state.durationMinutes = data.duration_minutes || 70;
+          state.timeRemainingSeconds = state.durationMinutes * 60;
+          const timeRemaining = document.getElementById('time-remaining');
+          if (timeRemaining) timeRemaining.textContent = `${state.durationMinutes}:00`;
+          const headTitle = document.getElementById('header-assessment-title');
+          if (headTitle) headTitle.textContent = data.assessment_title || 'Campus & Graduate Screening';
+          const jobTitle = document.getElementById('header-job-title');
+          if (jobTitle) jobTitle.textContent = `Position: ${data.job_title || 'Graduate Software Engineer'}`;
+        }
+      } catch (err) {
+        console.warn('Campus exam fetch fallback:', err);
+      }
+      showScreen('assessment');
+      renderQuestionTabs();
+      loadQuestion(0);
+      startAssessmentTimer();
+    };
+
+    if (btnExamReadyCampus) {
+      btnExamReadyCampus.addEventListener('click', handleLaunchCampusExam);
+    }
+    if (examItemCampus) {
+      examItemCampus.addEventListener('click', handleLaunchCampusExam);
+    }
+
     if (btnExamReady1) {
       btnExamReady1.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -817,41 +853,76 @@
   const MCQ_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
   function getQuestionSections() {
-    const mcqs = [];
-    const challenges = [];
+    const distinctSections = [];
+    const sectionMap = {};
+
     state.questions.forEach((q, idx) => {
-      const isMcq = q.type === 'mcq' || q.section === 'mcq' || (q.options && q.options.length > 0);
-      if (isMcq) {
-        mcqs.push(idx);
-      } else {
-        challenges.push(idx);
+      let secKey = q.section;
+      let secTitle = q.section_title;
+      if (!secKey || secKey === 'mcq' || secKey === 'coding' || secKey === 'sql') {
+        const isMcq = q.type === 'mcq' || q.section === 'mcq' || (q.options && q.options.length > 0);
+        secKey = isMcq ? 'mcq' : 'challenges';
+        secTitle = isMcq ? 'Section 1: Multiple Choice Questions (MCQs)' : 'Section 2: Hands-On Technical Challenges';
       }
+      if (!sectionMap[secKey]) {
+        sectionMap[secKey] = {
+          key: secKey,
+          title: secTitle || secKey,
+          indices: []
+        };
+        distinctSections.push(secKey);
+      }
+      sectionMap[secKey].indices.push(idx);
     });
-    return { mcqs, challenges };
+
+    const mcqs = (sectionMap['mcq'] ? sectionMap['mcq'].indices : []);
+    const challenges = (sectionMap['challenges'] ? sectionMap['challenges'].indices : []);
+
+    return { mcqs, challenges, sectionMap, distinctSections };
   }
 
   function renderQuestionTabs() {
     questionTabsBar.innerHTML = '';
-    const { mcqs, challenges } = getQuestionSections();
+    const { mcqs, challenges, sectionMap, distinctSections } = getQuestionSections();
     const currIdx = state.currentQuestionIndex;
-    const isCurrentInMcq = mcqs.includes(currIdx);
 
-    // Filter head tabs: show ONLY the questions for the current active section
-    const activeSectionIndices = isCurrentInMcq ? mcqs : challenges;
+    // Find current active section
+    let activeSecKey = distinctSections[0] || 'mcq';
+    for (const key of distinctSections) {
+      if (sectionMap[key].indices.includes(currIdx)) {
+        activeSecKey = key;
+        break;
+      }
+    }
+
+    const activeSec = sectionMap[activeSecKey] || { indices: [] };
+    const activeSectionIndices = activeSec.indices;
 
     activeSectionIndices.forEach((qIdx) => {
       const q = state.questions[qIdx];
       const btn = document.createElement('button');
       btn.className = `q-tab-btn ${qIdx === currIdx ? 'active' : ''}`;
       
-      const isMcq = q.type === 'mcq' || q.section === 'mcq';
+      const isMcq = q.type === 'mcq' || q.section === 'mcq' || (q.options && q.options.length > 0);
       const isSql = q.type === 'sql' || q.section === 'sql';
       const isDebugging = q.type === 'debugging' || (q.title && q.title.toLowerCase().includes('debugging'));
       const isSecurity = q.type === 'security' || (q.title && q.title.toLowerCase().includes('security'));
 
       let typeIcon = '💻';
       let typeLabel = 'Coding';
-      if (isMcq) {
+      if (q.section === 'english') {
+        typeIcon = '📖';
+        typeLabel = 'English';
+      } else if (q.section === 'logical') {
+        typeIcon = '🧩';
+        typeLabel = 'Logic';
+      } else if (q.section === 'quantitative') {
+        typeIcon = '📐';
+        typeLabel = 'Quant';
+      } else if (q.section === 'data_structures') {
+        typeIcon = '💻';
+        typeLabel = 'DSA';
+      } else if (isMcq) {
         typeIcon = qIdx === 0 ? '📘' : '🏛️';
         typeLabel = qIdx === 0 ? 'Concept' : 'Architecture';
       } else if (isSql) {
@@ -871,26 +942,65 @@
       questionTabsBar.appendChild(btn);
     });
 
-    // Update Section Navigation Buttons in banner
-    const btnSecMcq = document.getElementById('btn-section-mcq');
-    const btnSecChallenges = document.getElementById('btn-section-challenges');
-    if (btnSecMcq) {
-      btnSecMcq.classList.toggle('active', isCurrentInMcq);
-      btnSecMcq.style.background = isCurrentInMcq ? 'rgba(168,85,247,0.25)' : 'rgba(15,23,42,0.6)';
-      btnSecMcq.style.color = isCurrentInMcq ? '#c084fc' : '#94a3b8';
-      btnSecMcq.style.borderColor = isCurrentInMcq ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.1)';
-      btnSecMcq.onclick = () => {
-        if (mcqs.length > 0) loadQuestion(mcqs[0]);
-      };
-    }
-    if (btnSecChallenges) {
-      btnSecChallenges.classList.toggle('active', !isCurrentInMcq);
-      btnSecChallenges.style.background = !isCurrentInMcq ? 'rgba(56,189,248,0.25)' : 'rgba(15,23,42,0.6)';
-      btnSecChallenges.style.color = !isCurrentInMcq ? '#38bdf8' : '#94a3b8';
-      btnSecChallenges.style.borderColor = !isCurrentInMcq ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)';
-      btnSecChallenges.onclick = () => {
-        if (challenges.length > 0) loadQuestion(challenges[0]);
-      };
+    // Dynamically populate or update Section Navigation in banner
+    const bannerBar = document.getElementById('section-banner-bar');
+    if (bannerBar) {
+      let navContainer = document.getElementById('dynamic-section-nav');
+      if (!navContainer) {
+        navContainer = document.createElement('div');
+        navContainer.id = 'dynamic-section-nav';
+        navContainer.style.display = 'flex';
+        navContainer.style.alignItems = 'center';
+        navContainer.style.gap = '8px';
+        navContainer.style.flexWrap = 'wrap';
+        bannerBar.appendChild(navContainer);
+      }
+      
+      // Hide old static buttons if dynamic navigation is active
+      const oldMcq = document.getElementById('btn-section-mcq');
+      const oldChal = document.getElementById('btn-section-challenges');
+      if (oldMcq) oldMcq.style.display = 'none';
+      if (oldChal) oldChal.style.display = 'none';
+
+      navContainer.innerHTML = '';
+      distinctSections.forEach((secKey) => {
+        const secInfo = sectionMap[secKey];
+        const isActive = (secKey === activeSecKey);
+        const sBtn = document.createElement('button');
+        sBtn.type = 'button';
+        sBtn.className = `btn-section-toggle ${isActive ? 'active' : ''}`;
+        sBtn.style.padding = '4px 12px';
+        sBtn.style.borderRadius = '6px';
+        sBtn.style.fontSize = '0.74rem';
+        sBtn.style.fontWeight = '700';
+        sBtn.style.cursor = 'pointer';
+        sBtn.style.transition = 'all 0.2s';
+
+        let sIcon = '🔷';
+        let sLabel = secInfo.title.split(':')[0] || secKey;
+        if (secKey === 'english') { sIcon = '📖'; sLabel = 'English (12)'; }
+        else if (secKey === 'logical') { sIcon = '🧩'; sLabel = 'Logical (12)'; }
+        else if (secKey === 'quantitative') { sIcon = '📐'; sLabel = 'Quant (14)'; }
+        else if (secKey === 'data_structures') { sIcon = '💻'; sLabel = 'Data Structures (18)'; }
+        else if (secKey === 'mcq') { sIcon = '📘'; sLabel = `MCQs (${secInfo.indices.length})`; }
+        else if (secKey === 'challenges') { sIcon = '💻'; sLabel = `Challenges (${secInfo.indices.length})`; }
+
+        if (isActive) {
+          sBtn.style.background = 'rgba(6, 182, 212, 0.25)';
+          sBtn.style.color = '#38bdf8';
+          sBtn.style.borderColor = 'rgba(6, 182, 212, 0.5)';
+        } else {
+          sBtn.style.background = 'rgba(15,23,42,0.6)';
+          sBtn.style.color = '#94a3b8';
+          sBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+        }
+
+        sBtn.innerHTML = `<span>${sIcon} ${sLabel}</span>`;
+        sBtn.onclick = () => {
+          if (secInfo.indices.length > 0) loadQuestion(secInfo.indices[0]);
+        };
+        navContainer.appendChild(sBtn);
+      });
     }
 
     // Bottom Direct Question Pill Button (shows all questions across full exam)
@@ -918,17 +1028,25 @@
         const hasAnswer = q && state.candidateAnswers[q.id] !== undefined && String(state.candidateAnswers[q.id]).trim().length > 0;
         btn.classList.toggle('active', idx === state.currentQuestionIndex);
         btn.classList.toggle('answered', Boolean(hasAnswer));
-        const check = btn.querySelector('.q-check-mark');
-        if (check) check.style.display = hasAnswer ? 'inline' : 'none';
+        const mark = btn.querySelector('.q-check-mark');
+        if (mark) mark.style.display = hasAnswer ? 'inline' : 'none';
       });
     }
 
     if (progressIndicatorText && state.questions.length > 0) {
-      const { mcqs } = getQuestionSections();
-      const inMcq = mcqs.includes(state.currentQuestionIndex);
-      progressIndicatorText.textContent = inMcq 
-        ? `Section 1: Question ${state.currentQuestionIndex + 1} of ${mcqs.length} (MCQs)`
-        : `Section 2: Question ${state.currentQuestionIndex + 1} of ${state.questions.length} (Challenge ${state.currentQuestionIndex - mcqs.length + 1} of ${state.questions.length - mcqs.length})`;
+      const { sectionMap, distinctSections } = getQuestionSections();
+      const currIdx = state.currentQuestionIndex;
+      let activeSecKey = distinctSections[0] || 'mcq';
+      for (const key of distinctSections) {
+        if (sectionMap[key].indices.includes(currIdx)) {
+          activeSecKey = key;
+          break;
+        }
+      }
+      const activeSec = sectionMap[activeSecKey];
+      const posInSection = activeSec ? activeSec.indices.indexOf(currIdx) + 1 : currIdx + 1;
+      const totalInSection = activeSec ? activeSec.indices.length : state.questions.length;
+      progressIndicatorText.textContent = `Question ${currIdx + 1} of ${state.questions.length} · ${activeSec ? activeSec.title.split(':')[0] : 'Section'} (${posInSection} of ${totalInSection})`;
     }
   }
 
@@ -946,21 +1064,32 @@
     const isDebugging = q.type === 'debugging' || (q.title && q.title.toLowerCase().includes('debugging'));
     const isSecurity = q.type === 'security' || (q.title && q.title.toLowerCase().includes('security'));
 
-    const { mcqs, challenges } = getQuestionSections();
+    const { sectionMap, distinctSections } = getQuestionSections();
+    let activeSecKey = distinctSections[0] || 'mcq';
+    for (const key of distinctSections) {
+      if (sectionMap[key].indices.includes(index)) {
+        activeSecKey = key;
+        break;
+      }
+    }
+    const activeSec = sectionMap[activeSecKey];
+    const challenges = sectionMap['challenges'] ? sectionMap['challenges'].indices : [];
     const isLastQuestion = index === state.questions.length - 1;
-    const isFirstChallenge = index === challenges[0];
+    const isFirstChallenge = challenges.length > 0 ? index === challenges[0] : false;
 
     // Update Section Banner Header
     const sectionTitleDisplay = document.getElementById('section-title-display');
     const sectionBadgeIcon = document.getElementById('section-badge-icon');
 
-    if (sectionTitleDisplay) {
-      if (isMcq) {
-        sectionTitleDisplay.textContent = "Section 1: Multiple Choice Questions (MCQs)";
-        if (sectionBadgeIcon) sectionBadgeIcon.textContent = "🔷";
-      } else {
-        sectionTitleDisplay.textContent = "Section 2: Hands-On Technical Challenges (Coding, SQL & Debugging)";
-        if (sectionBadgeIcon) sectionBadgeIcon.textContent = "💻";
+    if (sectionTitleDisplay && activeSec) {
+      sectionTitleDisplay.textContent = activeSec.title;
+      if (sectionBadgeIcon) {
+        if (activeSecKey === 'english') sectionBadgeIcon.textContent = '📖';
+        else if (activeSecKey === 'logical') sectionBadgeIcon.textContent = '🧩';
+        else if (activeSecKey === 'quantitative') sectionBadgeIcon.textContent = '📐';
+        else if (activeSecKey === 'data_structures') sectionBadgeIcon.textContent = '💻';
+        else if (activeSecKey === 'mcq') sectionBadgeIcon.textContent = '🔷';
+        else sectionBadgeIcon.textContent = '💻';
       }
     }
 

@@ -31,6 +31,7 @@ from src.services.job_assessment_service import JobAssessmentService
 from src.services.assessment_service import (
     AssessmentService, get_exam_tracks_meta, get_question_modalities, EXAM_TRACKS
 )
+from src.services.campus_assessment_catalog import CAMPUS_GRADUATE_TRACK
 from src.services.copilot_service import RecruiterCopilotService
 from src.services.comparison_service import CandidateComparisonService
 from src.services.pipeline_service import PipelineService, ALLOWED_STAGES
@@ -2063,8 +2064,14 @@ async def get_candidate_assessment_view(
     except Exception:
         row = None
     if not row:
-        track = role if (role and role in EXAM_TRACKS) else "software_engineer"
-        track_info = EXAM_TRACKS.get(track, EXAM_TRACKS["software_engineer"])
+        if role == "campus_graduate_engineer":
+            track = "campus_graduate_engineer"
+            track_info = CAMPUS_GRADUATE_TRACK
+            dur = 70
+        else:
+            track = role if (role and role in EXAM_TRACKS) else "software_engineer"
+            track_info = EXAM_TRACKS.get(track, EXAM_TRACKS["software_engineer"])
+            dur = 30
         questions_source = [q.model_dump() for q in track_info["questions"]]
         sanitized_questions = []
         for q in questions_source:
@@ -2090,9 +2097,9 @@ async def get_candidate_assessment_view(
         return {
             "assessment_id": str(assessment_id),
             "candidate_name": "Aarav Sharma",
-            "job_title": track_info.get("name", "Software Engineer"),
-            "assessment_title": f"{track_info.get('name', 'Software Engineer')} - Proctored Sandbox",
-            "duration_minutes": 30,
+            "job_title": track_info.get("title", track_info.get("name", "Software Engineer")),
+            "assessment_title": f"{track_info.get('title', track_info.get('name', 'Software Engineer'))} - Proctored Screening",
+            "duration_minutes": dur,
             "strike_count": 0,
             "max_strikes": 3,
             "integrity_score": 100,
@@ -2110,7 +2117,9 @@ async def get_candidate_assessment_view(
 
     # Select question source: role-specific override or saved assessment questions
     questions_source = ass.questions_json or []
-    if role and role in EXAM_TRACKS:
+    if role == "campus_graduate_engineer":
+        questions_source = [q.model_dump() for q in CAMPUS_GRADUATE_TRACK["questions"]]
+    elif role and role in EXAM_TRACKS:
         questions_source = [q.model_dump() for q in EXAM_TRACKS[role]["questions"]]
     elif not questions_source:
         questions_source = [q.model_dump() for q in EXAM_TRACKS["software_engineer"]["questions"]]
