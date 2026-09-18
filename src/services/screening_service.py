@@ -13,74 +13,154 @@ from ..db.models import (
     GitHubProfile, Audit, AuditFlag, ModelEvaluation,
     GeneratedReply, AuditLog
 )
-from ..agent_1_resume_parser import parse_resume, CandidateClaims
+from ..agent_1_resume_parser import parse_resume, parse_resume_from_bytes, CandidateClaims
 from ..agent_2_code_auditor import audit_github, GitHubEvidence
 from ..agent_3_evaluator import ScreeningScorecard
 from ..consensus_evaluator import run_consensus_evaluation
 from ..smart_cache import smart_cache
+from .tech_ontology import TechOntology
 
 def build_claim_evidence_items(
     claims: CandidateClaims,
     evidence: GitHubEvidence,
     required_skills: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
-    """Builds a recruiter-friendly Claim vs Evidence list with statuses: Verified, Partially Verified, Unverified, Unavailable."""
+    """
+    Builds a recruiter-friendly, ontology-grounded Claim vs Evidence list.
+    Supports canonical technology aliases, repository manifest inspection, and skill inheritance.
+    Statuses: Verified, Partially Verified, Unverified, Unavailable.
+    """
     items = []
-    seen = set()
-    all_skills = []
+    seen_canonical = set()
+    all_skills = []  # List of (orig_skill, canonical_skill, is_required)
 
+    # 1. Job Requirements
     if required_skills:
         for s in required_skills:
             s_clean = s.strip()
-            if s_clean and s_clean.lower() not in seen:
-                all_skills.append((s_clean, True))
-                seen.add(s_clean.lower())
+            if s_clean:
+                s_canon = TechOntology.normalize(s_clean)
+                if s_canon.lower() not in seen_canonical:
+                    all_skills.append((s_clean, s_canon, True))
+                    seen_canonical.add(s_canon.lower())
 
-    for l in (claims.claimed_languages or []):
-        if l and l.strip() and l.strip().lower() not in seen:
-            all_skills.append((l.strip(), False))
-            seen.add(l.strip().lower())
+    # 2. Candidate Resume Claims across all 5 technical dimensions
+    claimed_pools = [
+        getattr(claims, "claimed_languages", []) or [],
+        getattr(claims, "claimed_frameworks", []) or [],
+        getattr(claims, "claimed_databases", []) or [],
+        getattr(claims, "claimed_cloud_devops", []) or [],
+        getattr(claims, "claimed_tools", []) or []
+    ]
 
-    for f in (claims.claimed_frameworks or []):
-        if f and f.strip() and f.strip().lower() not in seen:
-            all_skills.append((f.strip(), False))
-            seen.add(f.strip().lower())
+    all_claimed_canon = set()
+    for pool in claimed_pools:
+        for s in pool:
+            if s and str(s).strip():
+                s_clean = str(s).strip()
+                s_canon = TechOntology.normalize(s_clean)
+                all_claimed_canon.add(s_canon.lower())
+                if s_canon.lower() not in seen_canonical:
+                    all_skills.append((s_clean, s_canon, False))
+                    seen_canonical.add(s_canon.lower())
 
     github_available = bool(evidence.profile_found and evidence.username not in ("none", "", "null", "undefined"))
-    detected_langs = {k.lower(): count for k, count in (evidence.languages_detected or {}).items()}
 
-    for skill, is_req in all_skills:
-        sk_lower = skill.lower()
+    # Canonicalize detected languages
+    detected_langs_canon: Dict[str, int] = {}
+    for k, count in (evidence.languages_detected or {}).items():
+        k_canon = TechOntology.normalize(k).lower()
+        detected_langs_canon[k_canon] = detected_langs_canon.get(k_canon, 0) + count
+
+    # Pre-index repo highlights
+    repo_highlights = evidence.repo_highlights or []
+    repo_files_all = []
+    repo_deps_all = []
+    repo_frameworks_all = []
+    for r in repo_highlights:
+        repo_files_all.extend(getattr(r, "detected_files", []) or [])
+        repo_deps_all.extend(getattr(r, "detected_frameworks", []) or [])
+        repo_frameworks_all.extend([TechOntology.normalize(f).lower() for f in (getattr(r, "detected_frameworks", []) or [])])
+
+    for orig_skill, canon_skill, is_req in all_skills:
+        sk_lower = canon_skill.lower()
+        
         if not github_available:
             status = "Unavailable"
             details = "GitHub profile unavailable; evaluated on resume claims alone"
+            notes_text = "GitHub profile unavailable"
         else:
-            if sk_lower in detected_langs:
-                repo_cnt = detected_langs[sk_lower]
+            found_repo_name = None
+            found_desc_info = None
+
+            # Check A: Inspect individual repository highlights for files, frameworks, and manifests
+            for r in repo_highlights:
+                r_name = getattr(r, "name", "") or ""
+                r_desc = (getattr(r, "description", "") or "").lower()
+                r_lang = TechOntology.normalize(getattr(r, "language", "") or "").lower()
+                r_frameworks = [TechOntology.normalize(f).lower() for f in (getattr(r, "detected_frameworks", []) or [])]
+                
+                r_files = getattr(r, "detected_files", []) or []
+                r_deps = getattr(r, "detected_frameworks", []) or []
+                r_manifest = TechOntology.match_manifest_evidence(canon_skill, r_files, r_deps)
+
+                if r_manifest:
+                    found_repo_name = r_name
+                    found_desc_info = f"{r_manifest} in repo '{r_name}'"
+                    break
+                elif sk_lower in r_frameworks or sk_lower == r_lang:
+                    found_repo_name = r_name
+                    found_desc_info = f"Verified implementation in repository '{r_name}' ({getattr(r, 'language', '') or 'Public Code'})"
+                    break
+                elif sk_lower in r_desc or sk_lower in r_name.lower():
+                    found_repo_name = r_name
+                    found_desc_info = f"Found in repository description '{r_name}'"
+                    break
+
+            # Check B: Global manifest match across all repositories
+            manifest_match = TechOntology.match_manifest_evidence(canon_skill, repo_files_all, repo_deps_all) if not found_desc_info else None
+
+            # Check C: Primary language detection count
+            lang_count = detected_langs_canon.get(sk_lower, 0)
+
+            # Check D: Implied by an already verified parent framework/language
+            implied_by = None
+            if not found_desc_info and not manifest_match and lang_count == 0:
+                for parent_tech, implied_list in TechOntology.IMPLICATIONS.items():
+                    if canon_skill in implied_list:
+                        parent_lower = parent_tech.lower()
+                        if parent_lower in detected_langs_canon or parent_lower in repo_frameworks_all:
+                            implied_by = parent_tech
+                            break
+
+            if found_desc_info:
                 status = "Verified"
-                details = f"Verified across {repo_cnt} public repository codebase(s)"
+                details = found_desc_info
+                notes_text = f"Verified in repo '{found_repo_name}'" if found_repo_name else "Verified in public code"
+            elif manifest_match:
+                status = "Verified"
+                details = manifest_match
+                notes_text = "Verified via manifest configuration"
+            elif lang_count > 0:
+                status = "Verified"
+                details = f"Verified across {lang_count} public repository codebase(s)"
+                notes_text = "Verified in public code"
+            elif implied_by:
+                status = "Verified"
+                details = f"Verified: Inherited from verified '{implied_by}' codebase"
+                notes_text = f"Proven via {implied_by} code"
+            elif is_req and sk_lower not in all_claimed_canon:
+                status = "Unverified"
+                details = "Missing: Absent from both resume claims and public code"
+                notes_text = "Missing from candidate profile"
             else:
-                found_in_repos = False
-                for r in (evidence.repo_highlights or []):
-                    desc = (r.description or "").lower()
-                    rname = (r.name or "").lower()
-                    rlang = (r.language or "").lower()
-                    if sk_lower in desc or sk_lower in rname or sk_lower == rlang:
-                        found_in_repos = True
-                        break
-                if found_in_repos:
-                    status = "Verified"
-                    details = "Code or configuration found in public repository"
-                elif is_req and sk_lower not in [c.lower() for c in ((claims.claimed_languages or []) + (claims.claimed_frameworks or []))]:
-                    status = "Unverified"
-                    details = "Missing: Absent from both resume claims and public code"
-                else:
-                    status = "Unverified"
-                    details = "Mentioned in resume, but no supporting public code evidence found"
-        notes_text = "Verified in public code" if status == "Verified" else ("Mentioned on resume, no code found in repos" if status == "Unverified" else "GitHub profile unavailable")
+                status = "Unverified"
+                details = "Mentioned on resume, but no supporting public code evidence found"
+                notes_text = "Mentioned on resume, no code found in repos"
+
         items.append({
-            "skill": skill,
-            "skill_or_claim": skill,
+            "skill": canon_skill,
+            "skill_or_claim": canon_skill,
             "claimed_in": "Job Requirement" if is_req else "Candidate Resume",
             "evidence": details,
             "evidence_found": details,
@@ -245,27 +325,26 @@ def execute_screening_pipeline_core(
                 document_type="EMPTY_OR_WHITESPACE_ONLY",
                 validation_flags=["File is empty or 0 bytes."]
             )
-        elif not file_bytes.startswith(b"%PDF-"):
-            elapsed = round(time.time() - start_time, 2)
-            claims = CandidateClaims(
-                name=candidate_name_override or "Non-PDF File",
-                email=candidate_email_override,
-                github_username=None,
-                years_experience=0.0,
-                claimed_languages=[],
-                claimed_frameworks=[],
-                claimed_tools=[],
-                key_claims=[],
-                raw_text_length=len(file_bytes),
-                is_valid_resume=False,
-                document_type="CORRUPT_OR_UNREADABLE_FILE",
-                validation_flags=["File does not start with valid %PDF- magic bytes."]
-            )
         else:
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
-            claims = parse_resume(tmp_path)
+            fname_lower = (filename or "resume.pdf").lower()
+            if fname_lower.endswith(".pdf") and not file_bytes.startswith(b"%PDF-"):
+                elapsed = round(time.time() - start_time, 2)
+                claims = CandidateClaims(
+                    name=candidate_name_override or "Corrupt PDF File",
+                    email=candidate_email_override,
+                    github_username=None,
+                    years_experience=0.0,
+                    claimed_languages=[],
+                    claimed_frameworks=[],
+                    claimed_tools=[],
+                    key_claims=[],
+                    raw_text_length=len(file_bytes),
+                    is_valid_resume=False,
+                    document_type="CORRUPT_OR_UNREADABLE_FILE",
+                    validation_flags=["File does not start with valid %PDF- magic bytes."]
+                )
+            else:
+                claims = parse_resume_from_bytes(file_bytes, filename)
 
         if candidate_name_override and claims.is_valid_resume:
             claims.name = candidate_name_override
@@ -322,7 +401,7 @@ def execute_screening_pipeline_core(
             from ..email_connector import DraftResponseGenerator
             draft_obj = DraftResponseGenerator.create_draft(
                 candidate_name=claims.name,
-                recipient_email=claims.email or candidate_email_override or "candidate@example.com",
+                recipient_email=claims.email or candidate_email_override or "",
                 verdict="REJECT",
                 company_name=company_name,
                 role_title=role,
@@ -330,6 +409,8 @@ def execute_screening_pipeline_core(
                 score=0
             )
             draft_reply_data = {
+                "recipient_name": claims.name,
+                "recipient_email": claims.email or candidate_email_override or "",
                 "subject": draft_obj.subject,
                 "body_text": draft_obj.body_text,
                 "reply_type": "resubmission_request",
@@ -377,10 +458,11 @@ def execute_screening_pipeline_core(
                 "evidence_items": [],
                 "strengths": [],
                 "weaknesses": scorecard.red_flags,
+                "draft_reply": draft_reply_data,
                 "draft_reply_data": draft_reply_data,
                 "candidate": {
                     "name": claims.name,
-                    "email": claims.email or candidate_email_override
+                    "email": claims.email or candidate_email_override or ""
                 },
                 "document": {
                     "is_valid_resume": False,
@@ -476,6 +558,8 @@ def execute_screening_pipeline_core(
             reply_type = "info_request"
 
         draft_reply_data = {
+            "recipient_name": claims.name,
+            "recipient_email": claims.email or candidate_email_override or "",
             "subject": subject,
             "body_text": body_text,
             "reply_type": reply_type,
@@ -497,8 +581,9 @@ def execute_screening_pipeline_core(
             "consistency_score": scorecard.consistency_score,
             "company_skills_match_score": scorecard.company_skills_match_score,
             "candidate_name": claims.name,
-            "candidate_email": claims.email or candidate_email_override,
+            "candidate_email": claims.email or candidate_email_override or "",
             "github_username": target_github,
+            "github_url": f"https://github.com/{target_github}" if target_github and target_github != "none" else None,
             "years_experience": claims.years_experience,
             "target_role": scorecard.target_role or job_title,
             "job_description": job_description,
@@ -523,10 +608,13 @@ def execute_screening_pipeline_core(
             "evidence_items": evidence_data,
             "strengths": scorecard.green_flags,
             "weaknesses": scorecard.red_flags,
+            "draft_reply": draft_reply_data,
             "draft_reply_data": draft_reply_data,
             "candidate": {
                 "name": claims.name,
-                "email": claims.email or candidate_email_override
+                "email": claims.email or candidate_email_override or "",
+                "github_username": target_github,
+                "github_url": f"https://github.com/{target_github}" if target_github and target_github != "none" else None
             },
             "document": {
                 "is_valid_resume": True,

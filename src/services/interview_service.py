@@ -137,17 +137,50 @@ class TechnicalInterviewService:
             if job:
                 job_title = job.title
 
-        q1 = generate_first_interview_question(
-            candidate_name=candidate.name,
-            job_title=job_title,
-            claims=candidate.tags or ["backend services"],
-            top_repos=["core-platform-service"]
-        )
+        # Attempt to retrieve commit-grounded evidence from candidate's GitHub profile
+        from src.db.models import GitHubProfile
+        from src.services.evidence_interview_generator import EvidenceInterviewGenerator
+
+        gh_stmt = select(GitHubProfile).where(GitHubProfile.candidate_id == candidate_id)
+        gh_res = await self.db.execute(gh_stmt)
+        gh_profile = gh_res.scalar_one_or_none()
+
+        repo_highlights = []
+        if gh_profile and gh_profile.raw_json:
+            repo_highlights = gh_profile.raw_json.get("repo_highlights", [])
+
+        if repo_highlights:
+            pack = EvidenceInterviewGenerator.generate_from_repo_highlights(
+                candidate_name=candidate.name,
+                job_title=job_title,
+                repo_highlights=repo_highlights,
+                max_questions=3
+            )
+            first_cgq = pack.questions[0] if pack.questions else None
+            q1 = first_cgq.question if first_cgq else generate_first_interview_question(
+                candidate_name=candidate.name,
+                job_title=job_title,
+                claims=candidate.tags or ["backend services"],
+                top_repos=[r.get("name", "core-service") for r in repo_highlights[:1]]
+            )
+            initial_context = first_cgq.grounded_context if first_cgq else None
+            commit_sha = first_cgq.commit_sha if first_cgq else None
+        else:
+            q1 = generate_first_interview_question(
+                candidate_name=candidate.name,
+                job_title=job_title,
+                claims=candidate.tags or ["backend services"],
+                top_repos=["core-platform-service"]
+            )
+            initial_context = None
+            commit_sha = None
 
         turns = [
             {
                 "turn_index": 1,
                 "question": q1,
+                "grounded_context": initial_context,
+                "commit_sha": commit_sha,
                 "candidate_answer": None,
                 "ai_followup": None,
                 "feedback": None,

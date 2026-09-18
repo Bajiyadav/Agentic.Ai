@@ -132,7 +132,7 @@ class CandidateComparisonService:
             }
             candidates_data.append(item)
 
-        # Radar matrix skills comparisons
+        # Radar matrix skills comparisons (skill-by-skill presence)
         skills_radar = []
         for skill in sorted(list(all_skills_pool)):
             skill_entry = {"skill": skill}
@@ -140,30 +140,142 @@ class CandidateComparisonService:
                 skill_entry[c["candidate_id"]] = 1.0 if skill in c["verified_skills"] else 0.0
             skills_radar.append(skill_entry)
 
-        # Compute ranking verdict
+        # 6-Axis Skill Radar Visualization (Normalized 0-100 across key hiring dimensions)
+        radar_dimensions = [
+            "Skills Alignment",
+            "Code Quality",
+            "Consistency",
+            "Job Match",
+            "Assessment",
+            "Interview"
+        ]
+        radar_series = []
+        for c in candidates_data:
+            sk_align = c["breakdown"].get("domain_score") or (c["overall_score"] if c["overall_score"] is not None else 70)
+            cq_score = c["breakdown"].get("code_quality_score") or (c["overall_score"] if c["overall_score"] is not None else 70)
+            cs_score = c["breakdown"].get("consistency_score") or (c["overall_score"] if c["overall_score"] is not None else 70)
+            jm_score = c["job_match"].get("overall_match_pct") or (c["overall_score"] if c["overall_score"] is not None else 70)
+            as_score = c["assessment"].get("score") or (80 if c["assessment"].get("status") == "passed" else 65)
+            in_score = c["interview"].get("technical_score") or (82 if c["interview"].get("status") == "completed" else 65)
+
+            radar_series.append({
+                "candidate_id": c["candidate_id"],
+                "candidate_name": c["name"],
+                "data": [sk_align, cq_score, cs_score, jm_score, as_score, in_score],
+                "dimension_map": {
+                    "Skills Alignment": sk_align,
+                    "Code Quality": cq_score,
+                    "Consistency": cs_score,
+                    "Job Match": jm_score,
+                    "Assessment": as_score,
+                    "Interview": in_score
+                }
+            })
+
+        radar_chart = {
+            "dimensions": radar_dimensions,
+            "max_score": 100,
+            "series": radar_series
+        }
+
+        # Compute ranking verdict with composite scoring
+        for c in candidates_data:
+            c_overall = c["overall_score"] if c["overall_score"] is not None else 70
+            c_job = c["job_match"]["overall_match_pct"] if c["job_match"]["overall_match_pct"] is not None else c_overall
+            c_ass = c["assessment"]["score"] if c["assessment"]["score"] is not None else 65
+            c_int = c["interview"]["technical_score"] if c["interview"]["technical_score"] is not None else 65
+            c["composite_score"] = round(c_overall * 0.35 + c_job * 0.25 + c_ass * 0.20 + c_int * 0.20, 1)
+
         ranked = sorted(
             candidates_data,
-            key=lambda x: (
-                (x["overall_score"] or 0) * 0.4 +
-                (x["job_match"]["overall_match_pct"] or (x["overall_score"] or 0)) * 0.3 +
-                (x["assessment"]["score"] or 60) * 0.15 +
-                (x["interview"]["technical_score"] or 60) * 0.15
-            ),
+            key=lambda x: x.get("composite_score", 0),
             reverse=True
         )
         winner = ranked[0] if ranked else None
 
+        dimension_advantages = []
+        if winner and len(ranked) > 1:
+            runner_up = ranked[1]
+            w_series = next((s for s in radar_series if s["candidate_id"] == winner["candidate_id"]), None)
+            r_series = next((s for s in radar_series if s["candidate_id"] == runner_up["candidate_id"]), None)
+            if w_series and r_series:
+                for dim in radar_dimensions:
+                    w_val = w_series["dimension_map"].get(dim, 0)
+                    r_val = r_series["dimension_map"].get(dim, 0)
+                    if w_val > r_val:
+                        dimension_advantages.append(f"+{w_val - r_val}pts in {dim} vs runner-up ({runner_up['name']})")
+
         verdict = {
             "winner_id": winner["candidate_id"] if winner else None,
             "winner_name": winner["name"] if winner else None,
-            "rationale": f"{winner['name']} demonstrated the highest combined evidence integrity and technical score." if winner else "Insufficient data.",
-            "justification": f"{winner['name']} demonstrated the highest combined evidence integrity and technical score." if winner else "Insufficient data."
+            "composite_score": winner.get("composite_score") if winner else None,
+            "dimension_advantages": dimension_advantages,
+            "rationale": (
+                f"{winner['name']} demonstrated the highest overall evidence integrity "
+                f"(composite {winner.get('composite_score')}/100) with key leads in "
+                f"{', '.join(dimension_advantages[:2]) if dimension_advantages else 'core technical competencies'}."
+            ) if winner else "Insufficient data.",
+            "justification": (
+                f"Selected {winner['name']} based on comprehensive verification across code quality, "
+                f"repository authorship consistency, and technical assessments."
+            ) if winner else "Insufficient data."
         }
+
+        # Build Side-by-Side Matrix Table
+        side_by_side_matrix = [
+            {
+                "metric": "Overall Evidence Score",
+                "values": {c["candidate_id"]: f"{c['overall_score']}/100" if c['overall_score'] is not None else "Pending" for c in candidates_data}
+            },
+            {
+                "metric": "Composite Evaluator Score",
+                "values": {c["candidate_id"]: f"{c.get('composite_score', 0)}/100" for c in candidates_data}
+            },
+            {
+                "metric": "AI Recommendation",
+                "values": {c["candidate_id"]: c["recommendation"] for c in candidates_data}
+            },
+            {
+                "metric": "Code Quality Score",
+                "values": {c["candidate_id"]: f"{c['breakdown']['code_quality_score']}/100" for c in candidates_data}
+            },
+            {
+                "metric": "Consistency & Authorship",
+                "values": {c["candidate_id"]: f"{c['breakdown']['consistency_score']}/100" for c in candidates_data}
+            },
+            {
+                "metric": "Job Fit Match",
+                "values": {c["candidate_id"]: f"{c['job_match']['overall_match_pct']}%" if c['job_match']['overall_match_pct'] is not None else "N/A" for c in candidates_data}
+            },
+            {
+                "metric": "Assessment Score",
+                "values": {c["candidate_id"]: f"{c['assessment']['score']}/100" if c['assessment']['score'] is not None else "Not Taken" for c in candidates_data}
+            },
+            {
+                "metric": "Technical Interview",
+                "values": {c["candidate_id"]: f"{c['interview']['technical_score']}/100" if c['interview']['technical_score'] is not None else "Not Scheduled" for c in candidates_data}
+            },
+            {
+                "metric": "Verified Skills Count",
+                "values": {c["candidate_id"]: len(c["verified_skills"]) for c in candidates_data}
+            },
+            {
+                "metric": "Red Flags",
+                "values": {c["candidate_id"]: len(c["red_flags"]) for c in candidates_data}
+            },
+            {
+                "metric": "Green Highlights",
+                "values": {c["candidate_id"]: len(c["highlights"]) for c in candidates_data}
+            }
+        ]
 
         return {
             "candidate_count": len(candidates_data),
             "candidates": candidates_data,
             "skills_matrix": skills_radar,
+            "radar_chart": radar_chart,
+            "side_by_side_matrix": side_by_side_matrix,
             "top_candidate_verdict": verdict,
             "recommendation_summary": verdict
         }
+

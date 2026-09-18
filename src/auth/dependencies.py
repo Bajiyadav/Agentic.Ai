@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
-from src.db.session import get_db
+from src.db.session import get_db, get_tenant_db
 from src.db.models import User, Membership, Organization
 from src.security import decode_access_token
 from src.auth.schemas import TenantContext
@@ -220,4 +220,12 @@ async def get_tenant_or_demo_context(
             user_email="demo@auditagent.ai",
             role="owner"
         )
+
+async def get_db_for_tenant(
+    tenant: TenantContext = Depends(get_tenant_or_demo_context)
+):
+    """Dependency providing an RLS-isolated database session scoped to the caller's tenant."""
+    async for session in get_tenant_db(tenant.organization_id):
+        yield session
+
 

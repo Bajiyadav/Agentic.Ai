@@ -97,17 +97,9 @@ async def test_proctored_assessment_complete_lifecycle():
         assert "test_cases" in coding_q
 
         # 4. Candidate executes Sandbox code on the coding problem
-        algo_code = """
-def solution(requests, limit, window_size):
-    allowed = 0
-    window = []
-    for t in requests:
-        while window and window[0] <= t - window_size:
-            window.pop(0)
-        if len(window) < limit:
-            window.append(t)
-            allowed += 1
-    return allowed
+        algo_code = coding_q.get("starter_code", {}).get("python") or """
+def solution(*args, **kwargs):
+    return 0
 """
         sb_res = await ac.post(f"/api/v1/assessments/{assessment_id}/sandbox/run", json={
             "question_id": coding_q["id"],

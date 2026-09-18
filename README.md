@@ -1,17 +1,35 @@
-# 🤖 AuditAgent.ai — Enterprise AI Technical Hiring & Code Evidence Platform
+# 🤖 AuditAgent.ai — Evidence-Driven Technical Hiring Platform
 
-> **Claim vs Evidence AI**: Auditing candidate resumes against verified public GitHub evidence, deep repository inspection, adaptive technical interviews, and automated rubric assessments.
+> ### **AI advises. Evidence explains. Recruiters decide.**
 
-AuditAgent.ai is a multi-tenant B2B technical recruitment platform designed to eliminate resume fluff, verify genuine engineering capabilities, and automate candidate evaluation.
+AuditAgent.ai is an evidence-driven technical hiring platform that helps companies evaluate engineering candidates against the actual requirements of a role. It analyzes job descriptions, verifies technical claims against available public code evidence, delivers role-specific technical assessments, and produces explainable candidate recommendations—while keeping the recruiter in control of the final hiring decision.
 
 ---
 
-## 🌟 Key Features & 11 Core Pillars
+## 📚 Enterprise Documentation & Production Guides
 
-1. **Deterministic 40/30/30 Scoring Engine**
-   - **40% Technical Skills Match**: Verified programming languages and frameworks vs resume claims.
-   - **30% Code Quality & Practices**: Documentation ratio, original vs fork ratio, modularity, and testing presence.
-   - **30% Timeline & Claim Consistency**: Commit velocity, activity timeline, and verifiable project impact.
+- 🏛️ **[System Architecture Documentation](docs/ARCHITECTURE.md)**: End-to-end technical specification of all 5 pillars, agent workflows, ER diagram, and security isolation.
+- 🚀 **[Production Deployment Runbook](docs/PRODUCTION_DEPLOYMENT.md)**: Multi-stage Docker, PostgreSQL 17 + PgBouncer pooling, Redis caching, async workers, Caddy/Nginx TLS, and Prometheus observability.
+- ⚖️ **[Legal & Regulatory Compliance Framework](docs/LEGAL_AND_COMPLIANCE.md)**: NYC Local Law 144 (AEDT bias audits, 4/5ths impact ratio), EEOC Title VII / UGESP compliance, and GDPR Article 22 automated decision safeguards.
+
+---
+
+## 🌟 The 5 Core Pillars
+
+1. **01 — Job Intelligence**
+   - Understand exactly what the role requires: extracts strict required vs preferred skills, seniority levels, and responsibilities with zero hallucination.
+
+2. **02 — Evidence Audit**
+   - Compare candidate claims with available technical evidence: analyzes available public GitHub repositories, repository activity, and code evidence associated with the candidate. Neutral baseline for unlisted public code.
+
+3. **03 — Tailored Assessment**
+   - Test the skills that actually matter for the role: generates role-specific technical assessments and interactive coding sandboxes derived directly from the job description with proctoring safeguards.
+
+4. **04 — Explainable Job Match**
+   - Understand why a candidate matches—or doesn't: evaluates candidates across 6 deterministic dimensions (0–100) with clear explanations of strengths, skill gaps, and evidence contradictions.
+
+5. **05 — Recruiter Authority**
+   - AI recommends; the recruiter decides: AI recommendations (`SHORTLIST`, `REVIEW`, `REJECT`) are strictly advisory. Recruiters retain sovereign override power with immutable audit trails.
 
 2. **Star-Vanity Agnostic Deep Code Auditor**
    - Evaluates code architecture, test runner suites (`pytest`, `jest`), CI/CD workflows, and dependency hygiene without bias towards GitHub stars.

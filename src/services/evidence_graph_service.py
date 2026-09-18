@@ -168,7 +168,7 @@ class CandidateEvidenceGraphService:
             claimed_skills=skills,
             key_claims=[f"Demonstrated proficiency in {s}" for s in skills[:4]],
             projects=[],
-            education="Engineering Degree"
+            education=["Engineering Degree"]
         )
         evidence = GitHubEvidence(
             username=candidate.github_username or "candidate",

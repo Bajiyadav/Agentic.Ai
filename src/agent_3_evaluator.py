@@ -7,6 +7,7 @@ import litellm
 
 from .agent_1_resume_parser import CandidateClaims
 from .agent_2_code_auditor import GitHubEvidence
+from .services.tech_ontology import TechOntology
 
 class TopicInterviewQuestion(BaseModel):
     topic: str = Field(description="Target technical topic or gap")
@@ -227,23 +228,56 @@ def _deterministic_evaluator(
     green_flags = []
 
     # 1. Skills Match Calculation (General Claimed Languages vs Detected Languages)
-    claimed_langs = [l.lower() for l in claims.claimed_languages]
-    detected_langs = {k.lower(): v for k, v in evidence.languages_detected.items()}
+    claimed_langs = [TechOntology.normalize(l).lower() for l in (claims.claimed_languages or [])]
+    detected_langs = {TechOntology.normalize(k).lower(): v for k, v in (evidence.languages_detected or {}).items()}
     
-    if claimed_langs:
-        matched_langs = [l for l in claimed_langs if l in detected_langs]
+    # Collect all verified technologies across repo highlights, manifests, frameworks, and implications
+    repo_highlights = evidence.repo_highlights or []
+    repo_files_all = []
+    repo_deps_all = []
+    repo_frameworks_all = []
+    for r in repo_highlights:
+        repo_files_all.extend(getattr(r, "detected_files", []) or [])
+        repo_deps_all.extend(getattr(r, "detected_frameworks", []) or [])
+        repo_frameworks_all.extend([TechOntology.normalize(f).lower() for f in (getattr(r, "detected_frameworks", []) or [])])
+
+    github_available = bool(
+        getattr(evidence, "profile_found", False) and 
+        getattr(evidence, "username", "").lower() not in ("none", "", "null", "undefined") and 
+        not getattr(evidence, "api_rate_limited", False)
+    )
+    has_public_code = bool(github_available and getattr(evidence, "total_public_repos", 0) > 0)
+
+    if not has_public_code:
+        # Candidate does not have public code evidence (e.g. private enterprise repos or no GitHub)
+        # Apply neutral baseline without penalizing as fraud or missing skills
+        if claimed_langs:
+            skills_match = 60  # Provisional neutral baseline
+            green_flags.append(f"Technical skills stated on resume: {', '.join([TechOntology.normalize(l) for l in claimed_langs[:4]])}.")
+        else:
+            skills_match = 0
+            red_flags.append("No programming languages or technical proficiencies found in candidate profile.")
+        missing = []
+    elif claimed_langs:
+        matched_langs = []
+        for l in claimed_langs:
+            if l in detected_langs:
+                matched_langs.append(TechOntology.normalize(l))
+            elif any(TechOntology.normalize(parent).lower() in detected_langs for parent, implied in TechOntology.IMPLICATIONS.items() if TechOntology.normalize(l) in implied):
+                matched_langs.append(TechOntology.normalize(l))
+
         match_ratio = len(matched_langs) / len(claimed_langs)
-        skills_match = int(match_ratio * 70) + (30 if len(matched_langs) > 0 else 0)
+        skills_match = int(match_ratio * 100)
         
-        missing = [l for l in claimed_langs if l not in detected_langs]
+        missing = [l for l in claimed_langs if TechOntology.normalize(l) not in matched_langs]
         if missing:
-            red_flags.append(f"Claimed expertise in {', '.join(missing[:3])}, but found 0 public repositories.")
+            red_flags.append(f"Claimed expertise in {', '.join([TechOntology.normalize(m) for m in missing[:3]])}, but found 0 public repositories.")
         if matched_langs:
             green_flags.append(f"Verified GitHub evidence in: {', '.join(matched_langs)}.")
     else:
-        # If no languages claimed at all, score is 0, not 70!
         skills_match = 0
         red_flags.append("No programming languages or technical proficiencies found in candidate profile.")
+        missing = []
 
     # 2. Company Required Skills Evaluation
     matched_company_skills: List[str] = []
@@ -252,32 +286,69 @@ def _deterministic_evaluator(
     company_match_score: Optional[int] = None
 
     if required_skills:
-        all_claimed_skills = set(
-            [s.lower() for s in (claims.claimed_languages + claims.claimed_frameworks + claims.claimed_tools)]
+        all_claimed_raw = (
+            (claims.claimed_languages or []) +
+            (claims.claimed_frameworks or []) +
+            (getattr(claims, "claimed_databases", []) or []) +
+            (getattr(claims, "claimed_cloud_devops", []) or []) +
+            (getattr(claims, "claimed_tools", []) or [])
         )
-        detected_set = set(detected_langs.keys())
+        all_claimed_skills = {TechOntology.normalize(s).lower() for s in all_claimed_raw if s and str(s).strip()}
         
         skill_scores = []
         for raw_req in required_skills:
             req = raw_req.strip()
             if not req:
                 continue
-            req_lower = req.lower()
+            req_canon = TechOntology.normalize(req)
+            req_lower = req_canon.lower()
 
-            # Check GitHub evidence (in repo languages or highlights)
-            in_code = req_lower in detected_set or any(req_lower in d or d in req_lower for d in detected_set)
+            # Check GitHub evidence:
+            # A. In detected languages
+            in_langs = req_lower in detected_langs
+            # B. In manifests (Dockerfile, docker-compose, etc.)
+            in_manifest = bool(TechOntology.match_manifest_evidence(req_canon, repo_files_all, repo_deps_all))
+            # C. In repo frameworks, repo names, descriptions
+            in_repos = False
+            for r in repo_highlights:
+                r_frameworks = [TechOntology.normalize(f).lower() for f in (getattr(r, "detected_frameworks", []) or [])]
+                r_desc = (getattr(r, "description", "") or "").lower()
+                r_name = (getattr(r, "name", "") or "").lower()
+                r_lang = TechOntology.normalize(getattr(r, "language", "") or "").lower()
+                r_files = getattr(r, "detected_files", []) or []
+                r_deps = getattr(r, "detected_frameworks", []) or []
+                
+                if (req_lower in r_frameworks or 
+                    req_lower == r_lang or 
+                    req_lower in r_name or 
+                    req_lower in r_desc or 
+                    TechOntology.match_manifest_evidence(req_canon, r_files, r_deps)):
+                    in_repos = True
+                    break
+
+            # D. Implied by parent technology
+            in_implication = False
+            for parent_tech, implied_list in TechOntology.IMPLICATIONS.items():
+                if req_canon in implied_list:
+                    p_lower = parent_tech.lower()
+                    if p_lower in detected_langs or p_lower in repo_frameworks_all:
+                        in_implication = True
+                        break
+
+            in_code = in_langs or in_manifest or in_repos or in_implication
+            
             # Check Resume claims
             in_resume = req_lower in all_claimed_skills or any(req_lower in c or c in req_lower for c in all_claimed_skills)
 
             if in_code:
-                verified_company_skills.append(req)
-                matched_company_skills.append(req)
+                verified_company_skills.append(req_canon)
+                matched_company_skills.append(req_canon)
                 skill_scores.append(100)
             elif in_resume:
-                matched_company_skills.append(req)
-                skill_scores.append(50)  # Claimed on resume but unverified in code
+                matched_company_skills.append(req_canon)
+                skill_scores.append(60 if not has_public_code else 50)
             else:
-                missing_company_skills.append(req)
+                missing_company_skills.append(req_canon)
                 skill_scores.append(0)
 
         total_req_count = len(skill_scores)
@@ -288,7 +359,7 @@ def _deterministic_evaluator(
             green_flags.append(f"Verified company required skill(s) in public code: {', '.join(verified_company_skills)}.")
         
         unverified = [s for s in matched_company_skills if s not in verified_company_skills]
-        if unverified:
+        if unverified and has_public_code:
             red_flags.append(f"Company required skill(s) {', '.join(unverified)} claimed on resume, but lack public code evidence.")
 
         if missing_company_skills:
@@ -303,31 +374,38 @@ def _deterministic_evaluator(
                 green_flags.append(f"Meets company experience requirement: {cand_exp} yrs (req: {min_experience}+ yrs).")
 
     # 3. Code Quality Calculation
-    # Factors: documentation ratio, original repos vs forks, total stars
-    doc_points = int(evidence.documentation_ratio * 40)
-    original_points = 30 if evidence.original_repos_count >= 5 else int(evidence.original_repos_count * 6)
-    star_points = min(30, evidence.total_stars * 3) if evidence.total_stars > 0 else 10
-    code_quality = min(100, doc_points + original_points + star_points)
+    if has_public_code:
+        doc_points = int(evidence.documentation_ratio * 40)
+        original_points = 35 if evidence.original_repos_count >= 5 else int(evidence.original_repos_count * 7)
+        star_points = min(25, evidence.total_stars * 3) if evidence.total_stars > 0 else 0
+        code_quality = min(100, doc_points + original_points + star_points)
 
-    if evidence.documentation_ratio >= 0.7:
-        green_flags.append("High documentation standard: majority of repositories include READMEs & descriptions.")
-    elif evidence.total_public_repos > 0 and evidence.documentation_ratio < 0.3:
-        red_flags.append("Low documentation standard: most repositories lack descriptions or documentation.")
+        if evidence.documentation_ratio >= 0.7:
+            green_flags.append("High documentation standard: majority of repositories include READMEs & descriptions.")
+        elif evidence.documentation_ratio < 0.3:
+            red_flags.append("Low documentation standard: most repositories lack descriptions or documentation.")
 
-    if evidence.forked_repos_count > 0 and evidence.original_repos_count == 0:
-        red_flags.append("100% of public repositories are forks; no original source projects found.")
-
-    # 4. Consistency Calculation
-    consistency = 80
-    if not evidence.profile_found:
-        consistency = 25
-        red_flags.append("GitHub profile could not be verified.")
+        if evidence.forked_repos_count > 0 and evidence.original_repos_count == 0:
+            red_flags.append("100% of public repositories are forks; no original source projects found.")
     else:
+        # Contractual neutral baseline for enterprise candidates without public repositories
+        code_quality = 50
+
+    # 4. Consistency Calculation - Calibrated to reflect verified vs claimed evidence
+    if not has_public_code:
+        consistency = 65  # Contractual neutral baseline for candidates without public repositories
+    else:
+        consistency = 75
+        # Penalize if majority of claimed skills have no public evidence
+        if claims.claimed_languages:
+            unverified_ratio = len(missing) / max(1, len(claims.claimed_languages))
+            consistency -= int(unverified_ratio * 25)
         if evidence.recent_activity_count == 0 and evidence.total_public_repos > 0:
-            consistency -= 20
+            consistency -= 15
             red_flags.append("No active repository pushes or commits recorded in the past 6 months.")
         else:
             green_flags.append(f"Active contributor: {evidence.recent_activity_count} repositories updated recently.")
+        consistency = max(20, min(95, consistency))
 
     # 5. Overall Weighted Score
     if company_match_score is not None:
@@ -367,7 +445,7 @@ def _deterministic_evaluator(
             recommendation = "REJECT"
 
     # Candidate cannot be SHORTLIST without any public code evidence
-    if (not evidence.profile_found or evidence.total_public_repos == 0) and recommendation == "SHORTLIST":
+    if not has_public_code and recommendation == "SHORTLIST":
         recommendation = "REVIEW"
         red_flags.append("Cannot grant full SHORTLIST without verifiable public source code evidence.")
 

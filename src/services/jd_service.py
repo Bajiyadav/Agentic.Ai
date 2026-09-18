@@ -2,7 +2,7 @@ import os
 import re
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 import litellm
 
@@ -19,13 +19,17 @@ class StructuredJobDescription(BaseModel):
     work_model: str = Field(default="remote", description="remote, hybrid, onsite")
     work_mode: str = Field(default="remote", description="remote, hybrid, onsite")
     seniority: str = Field(default="Senior", description="Junior, Mid, Senior, Staff, Lead")
-    experience_min_years: float = Field(default=3.0, description="Minimum years of required experience")
-    minimum_years_experience: float = Field(default=3.0, description="Minimum years of required experience")
+    experience_min_years: Optional[float] = Field(default=None, description="Minimum years of required experience if stated")
+    minimum_years_experience: Optional[float] = Field(default=None, description="Minimum years of required experience if stated")
     experience_max_years: Optional[float] = Field(default=None, description="Maximum experience years if stated")
-    required_skills: List[str] = Field(default_factory=list, description="Mandatory technical skills")
+    required_skills: List[str] = Field(default_factory=list, description="Mandatory technical skills explicitly required")
     preferred_skills: List[str] = Field(default_factory=list, description="Preferred or bonus technical skills")
-    responsibilities: List[str] = Field(default_factory=list, description="Core responsibilities")
+    responsibilities: List[str] = Field(default_factory=list, description="Core responsibilities extracted from text")
     qualifications: List[str] = Field(default_factory=list, description="Educational or domain qualifications")
+    education: List[str] = Field(default_factory=list, description="Explicit degree requirements")
+    certifications: List[str] = Field(default_factory=list, description="Explicit technical certifications")
+    technologies_by_category: Dict[str, List[str]] = Field(default_factory=dict, description="Categorized technical stack")
+    job_summary: str = Field(default="", description="Concise role summary")
     salary_range: Optional[str] = Field(default=None, description="Salary or compensation range")
     source_type: str = Field(default="pasted_text", description="uploaded_file | pasted_text | url | manual")
     raw_jd_text: Optional[str] = Field(default=None, description="Original raw text")
@@ -96,83 +100,332 @@ def _extract_title_from_jd(jd_text: str) -> str:
 
     return "Senior Full-Stack Engineer"
 
-def _heuristic_jd_parser(jd_text: str) -> StructuredJobDescription:
-    """Heuristic fallback parser supporting large LinkedIn multi-paragraph postings."""
-    title = _extract_title_from_jd(jd_text)
+# Modern comprehensive tech taxonomy for structured JD intelligence
+TECH_TAXONOMY = {
+    "languages": [
+        "Python", "Go", "Java", "JavaScript", "TypeScript", "C++", "C#", "Rust",
+        "Ruby", "PHP", "Swift", "Kotlin", "Scala", "SQL", "HTML", "CSS", "Bash", "Shell", "R"
+    ],
+    "frameworks": [
+        "FastAPI", "Django", "Flask", "Express", "Nest.js", "Node.js", "React",
+        "React Native", "Vue", "Angular", "Next.js", "Spring Boot", "ASP.NET", ".NET",
+        "PyTorch", "TensorFlow", "Scikit-Learn", "Pandas", "NumPy", "Keras"
+    ],
+    "databases": [
+        "PostgreSQL", "MySQL", "Redis", "MongoDB", "Cassandra", "ClickHouse",
+        "Elasticsearch", "DynamoDB", "Oracle", "SQLite", "CockroachDB", "Neo4j",
+        "Snowflake", "BigQuery"
+    ],
+    "cloud_devops": [
+        "AWS", "GCP", "Google Cloud", "Azure", "Docker", "Kubernetes", "Terraform",
+        "Ansible", "CI/CD", "Helm", "Linux", "OpenTelemetry", "Prometheus", "Grafana", "Datadog"
+    ],
+    "tools_libraries": [
+        "Kafka", "RabbitMQ", "Celery", "SQS", "Pub/Sub", "NATS", "gRPC", "GraphQL",
+        "REST APIs", "REST", "WebSockets", "Microservices", "Distributed Systems", "Git", "GitHub"
+    ]
+}
 
-    # Comprehensive modern tech catalog for LinkedIn job descriptions
-    techs = [
-        "Python", "JavaScript", "TypeScript", "React", "Node.js", "Go", "Golang",
-        "Java", "PostgreSQL", "Docker", "Kubernetes", "AWS", "GCP", "Azure", "Redis",
-        "FastAPI", "Django", "Flask", "GraphQL", "REST", "Rust", "Vue", "Angular",
-        "Next.js", "C++", "C#", ".NET", "Kafka", "RabbitMQ", "MongoDB", "MySQL",
-        "Elasticsearch", "Terraform", "CI/CD", "Linux", "Git", "Microservices",
-        "SQL", "NoSQL", "PyTorch", "TensorFlow", "Pandas", "Spark", "Airflow"
+ALL_CATALOG_SKILLS = [skill for cat in TECH_TAXONOMY.values() for skill in cat]
+
+def _skill_matches_in_text(skill: str, text: str) -> bool:
+    """Matches skill name accurately using boundary rules to avoid false positives."""
+    if not text or not skill:
+        return False
+    if skill in ("Go", "Golang"):
+        return bool(re.search(r"\b(?:Go|Golang)\b", text))
+    if skill == "C":
+        return bool(re.search(r"\bC\s+(?:language|programming|code)\b", text, re.IGNORECASE))
+    if skill in ("C++", "C#", ".NET"):
+        return bool(re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", text, re.IGNORECASE))
+    if skill == "R":
+        return bool(re.search(r"\bR\s+(?:language|programming|statistics)\b", text, re.IGNORECASE))
+    if skill in ("REST APIs", "REST"):
+        return bool(re.search(r"\bREST(?:ful)?(?:\s+APIs?)?\b", text, re.IGNORECASE))
+    if skill in ("PostgreSQL", "Postgres"):
+        return bool(re.search(r"\b(?:PostgreSQL|Postgres)\b", text, re.IGNORECASE))
+    if skill in ("GCP", "Google Cloud"):
+        return bool(re.search(r"\b(?:GCP|Google\s+Cloud(?:\s+Platform)?)\b", text, re.IGNORECASE))
+    if skill == "CI/CD":
+        return bool(re.search(r"\bCI\s*/\s*CD\b", text, re.IGNORECASE))
+
+    return bool(re.search(r"\b" + re.escape(skill) + r"\b", text, re.IGNORECASE))
+
+def _normalize_skill_name(skill: str) -> str:
+    """Normalizes aliases to canonical names."""
+    if skill.lower() in ("golang", "go"):
+        return "Go"
+    if skill.lower() in ("postgres", "postgresql"):
+        return "PostgreSQL"
+    if skill.lower() in ("google cloud", "gcp"):
+        return "GCP"
+    if skill.lower() in ("rest", "rest api", "rest apis", "restful", "restful api", "restful apis"):
+        return "REST APIs"
+    return skill
+
+def _segment_jd_sections(jd_text: str) -> Dict[str, str]:
+    """Splits job description text into semantic sections based on standard headings."""
+    patterns = [
+        ("about", r"(?:^|\n)\s*(?:###?\s*)?(?:About(?:\s+the)?\s+Role|About\s+Us|Role\s+Overview|Position\s+Overview|Who\s+We\s+Are)\s*[:\-]?\s*(?:\n|$)"),
+        ("responsibilities", r"(?:^|\n)\s*(?:###?\s*)?(?:Key\s+)?Responsibilities|What\s+you(?:'ll)?\s+do|What\s+you\s+will\s+do|Core\s+Responsibilities|Duties|Key\s+Accountabilities|Role\s+Responsibilities\s*[:\-]?\s*(?:\n|$)"),
+        ("required", r"(?:^|\n)\s*(?:###?\s*)?(?:Required\s+Qualifications|Basic\s+Qualifications|Minimum\s+Qualifications|Minimum\s+Requirements|Required\s+Skills|Required\s+Experience|Must\s+Have|Requirements|What\s+You\s+Need|What\s+You\s+Bring)\s*[:\-]?\s*(?:\n|$)"),
+        ("preferred", r"(?:^|\n)\s*(?:###?\s*)?(?:Preferred\s+Qualifications|Nice\s+to\s+Have|Bonus\s+Points|Bonus|Plus|Preferred\s+Skills|Preferred\s+Experience|Desired\s+Qualifications|What\s+Sets\s+You\s+Apart)\s*[:\-]?\s*(?:\n|$)"),
+        ("education", r"(?:^|\n)\s*(?:###?\s*)?(?:Education(?:\s+Requirements)?|Academic\s+Requirements|Degrees?)\s*[:\-]?\s*(?:\n|$)"),
+        ("benefits", r"(?:^|\n)\s*(?:###?\s*)?(?:Benefits|What\s+We\s+Offer|Perks|Compensation)\s*[:\-]?\s*(?:\n|$)"),
     ]
 
-    # Detect sections if present (e.g. Requirements vs Preferred)
-    req_section_match = re.search(
-        r"(?:requirements|basic qualifications|must have|what you(?:'ll)? need|qualifications)(.*?)(?:preferred|nice to have|bonus|responsibilities|benefits|\Z)",
-        jd_text,
-        re.IGNORECASE | re.DOTALL
-    )
-    pref_section_match = re.search(
-        r"(?:preferred qualifications|nice to have|bonus points|preferred|plus)(.*?)(?:benefits|what we offer|about us|\Z)",
-        jd_text,
-        re.IGNORECASE | re.DOTALL
-    )
+    matches = []
+    for key, pat in patterns:
+        for m in re.finditer(pat, jd_text, re.IGNORECASE):
+            matches.append((m.start(), m.end(), key))
 
-    req_text = req_section_match.group(1) if req_section_match else jd_text
-    pref_text = pref_section_match.group(1) if pref_section_match else ""
+    if not matches:
+        return {"general": jd_text}
 
-    found_in_req = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", req_text, re.IGNORECASE)]
-    found_in_pref = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", pref_text, re.IGNORECASE)]
-    all_found = [t for t in techs if re.search(r"\b" + re.escape(t) + r"\b", jd_text, re.IGNORECASE)]
+    matches.sort(key=lambda x: x[0])
+    sections: Dict[str, str] = {}
 
-    if found_in_req:
-        required = found_in_req[:7]
-        # Preferred skills are either from preferred section or remaining found skills
-        preferred = [t for t in (found_in_pref + all_found) if t not in required][:5]
-    else:
-        required = all_found[:5] if all_found else ["Python", "Docker", "PostgreSQL"]
-        preferred = all_found[5:9] if len(all_found) > 5 else ["Kubernetes", "Redis"]
+    if matches[0][0] > 0:
+        intro = jd_text[:matches[0][0]].strip()
+        if intro:
+            sections["intro"] = intro
 
-    # Experience heuristic: handle multiple variations (e.g. "4+ years", "minimum 3 years", "3-5 years")
-    exp_match = re.search(r"(?:minimum\s+(?:of\s+)?)?(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?(?:\s+(?:professional|relevant|hands-on))?\s+experience", jd_text, re.IGNORECASE)
-    if not exp_match:
-        exp_match = re.search(r"(\d+)\s*-\s*\d+\s*(?:years?|yrs?)", jd_text, re.IGNORECASE)
-    years = float(exp_match.group(1)) if exp_match else 3.0
+    for i in range(len(matches)):
+        start_content = matches[i][1]
+        end_content = matches[i + 1][0] if i + 1 < len(matches) else len(jd_text)
+        key = matches[i][2]
+        content = jd_text[start_content:end_content].strip()
+        if key in sections:
+            sections[key] += "\n" + content
+        else:
+            sections[key] = content
 
-    # Extract responsibilities if present
-    responsibilities = []
-    resp_match = re.search(
-        r"(?:responsibilities|what you(?:'ll)? do|key duties|role responsibilities)(.*?)(?:requirements|qualifications|what you bring|benefits|about us|\Z)",
-        jd_text,
-        re.IGNORECASE | re.DOTALL
-    )
-    if resp_match:
-        lines = [re.sub(r"^[\s*•\-\d.]+", "", l).strip() for l in resp_match.group(1).splitlines() if len(re.sub(r"^[\s*•\-\d.]+", "", l).strip()) > 15]
-        if lines:
-            responsibilities = lines[:5]
+    return sections
 
-    if not responsibilities:
-        responsibilities = [
-            "Architect, build, and maintain scalable software services and APIs.",
-            "Collaborate with cross-functional product and engineering teams.",
-            "Ensure high software engineering standards with automated tests and CI/CD."
-        ]
+def _extract_experience(text: str) -> Tuple[Optional[float], Optional[float]]:
+    """Extracts min and max years of experience if explicitly stated. Returns (None, None) if not present or malformed."""
+    if not text or not text.strip():
+        return (None, None)
 
-    # Extract qualifications if present
-    qualifications = []
-    qual_match = re.search(
-        r"(?:qualifications|requirements|what you bring|education)(.*?)(?:responsibilities|benefits|about us|\Z)",
-        jd_text,
-        re.IGNORECASE | re.DOTALL
-    )
-    if qual_match:
-        lines = [re.sub(r"^[\s*•\-\d.]+", "", l).strip() for l in qual_match.group(1).splitlines() if len(re.sub(r"^[\s*•\-\d.]+", "", l).strip()) > 15]
-        if lines:
-            qualifications = lines[:5]
+    # 0. Check for "no experience required" or "0 years experience"
+    if re.search(r"\b(?:no|zero|0)\s+years?(?:\s+of)?\s+experience\b|\bno\s+experience\s+required\b", text, re.IGNORECASE):
+        return (0.0, None)
+
+    # 1. Range match: e.g. "3-5 years of professional software engineering experience"
+    range_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:years?|yrs?)(?:\s+of)?(?:\s+[a-zA-Z\-/]+){0,4}\s+experience", text, re.IGNORECASE)
+    if not range_match:
+        range_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*(?:years?|yrs?)", text, re.IGNORECASE)
+    if range_match:
+        try:
+            min_y = float(range_match.group(1))
+            max_y = float(range_match.group(2))
+            return (min_y, max_y)
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Min experience match with qualifiers: e.g. "3+ years experience", "5 years experience", "at least 4 years of hands-on experience"
+    min_match = re.search(r"(?:minimum\s+(?:of\s+)?|at\s+least\s+)?(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s+of)?(?:\s+[a-zA-Z\-/]+){0,4}\s+experience", text, re.IGNORECASE)
+    if min_match:
+        try:
+            return (float(min_match.group(1)), None)
+        except (ValueError, TypeError):
+            pass
+
+    # 3. Explicit label match: e.g. "Experience: 5 years", "Experience: 3+ yrs"
+    label_match = re.search(r"experience(?:\s+requirements?)?\s*:\s*(?:minimum\s+(?:of\s+)?)?(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)", text, re.IGNORECASE)
+    if label_match:
+        try:
+            return (float(label_match.group(1)), None)
+        except (ValueError, TypeError):
+            pass
+
+    # 4. Standard 3+ years / 5+ yrs
+    sec_match = re.search(r"\b(\d+(?:\.\d+)?)\+\s*(?:years?|yrs?)\b", text, re.IGNORECASE)
+    if sec_match:
+        try:
+            return (float(sec_match.group(1)), None)
+        except (ValueError, TypeError):
+            pass
+
+    return (None, None)
+
+def _extract_seniority(title: str, text: str, min_years: Optional[float]) -> str:
+    combined = f"{title} {text[:500]}".lower()
+    if re.search(r"\b(?:principal|distinguished)\b", combined):
+        return "Principal"
+    if re.search(r"\bstaff\b", combined):
+        return "Staff"
+    if re.search(r"\b(?:lead|tech\s+lead|architect)\b", combined):
+        return "Lead"
+    if re.search(r"\b(?:senior|sr\.?)\b", combined):
+        return "Senior"
+    if re.search(r"\b(?:junior|jr\.?|associate|entry[- ]level|intern)\b", combined):
+        return "Junior"
+    if re.search(r"\bmid[- ]level\b", combined):
+        return "Mid"
+
+    if min_years is not None:
+        if min_years >= 8:
+            return "Staff"
+        if min_years >= 5:
+            return "Senior"
+        if min_years >= 2:
+            return "Mid"
+        if min_years < 2:
+            return "Junior"
+
+    return "Senior" if "senior" in title.lower() else "Mid"
+
+def _extract_education(text: str) -> List[str]:
+    """Extracts explicit educational degree requirements from text without inventing any."""
+    edu_list: List[str] = []
+    lines = text.splitlines()
+    for line in lines:
+        clean = line.strip()
+        if not clean:
+            continue
+        # Avoid job titles or section labels being mistaken for education
+        if re.search(r"^(?:position|title|job\s+title|role)\s*:", clean, re.IGNORECASE):
+            continue
+        # Require actual degree context (Bachelor's, Master's, PhD, BS, MS, Associate's Degree, Degree in)
+        if re.search(r"\b(?:Bachelor(?:'s)?(?:\s+degree)?|Master(?:'s)?(?:\s+degree)?|Ph\.?D\.?|B\.?S\.?(?:\s+in|\s+degree|\b)|M\.?S\.?(?:\s+in|\s+degree|\b)|B\.?E\.?|B\.?Tech|Associate(?:'s)?\s+Degree|Degree\s+in)\b", clean, re.IGNORECASE):
+            clean_item = re.sub(r"^[\s*•\-\d.]+", "", clean).strip()
+            if len(clean_item) >= 8 and clean_item not in edu_list:
+                edu_list.append(clean_item)
+    return edu_list[:4]
+
+def _extract_certifications(text: str) -> List[str]:
+    """Extracts explicit technical certifications mentioned in text."""
+    certs: List[str] = []
+    cert_patterns = [
+        (r"\b(?:AWS\s+Certified|Certified\s+AWS)(?:\s+[A-Za-z]+)?(?:\s+Architect|\s+Developer|\s+SysOps|\s+Solutions|\s+Professional)?\b", "AWS Certified Solutions Architect"),
+        (r"\b(?:GCP|Google\s+Cloud)\s+Certified(?:\s+[A-Za-z]+)?\b", "Google Cloud Certified"),
+        (r"\bAzure\s+Certified(?:\s+[A-Za-z]+)?\b", "Azure Certified"),
+        (r"\bCKA\b|\bCertified\s+Kubernetes\s+Administrator\b", "Certified Kubernetes Administrator (CKA)"),
+        (r"\bCKAD\b|\bCertified\s+Kubernetes\s+Application\s+Developer\b", "Certified Kubernetes Application Developer (CKAD)"),
+        (r"\bCISSP\b", "CISSP"),
+        (r"\bCISM\b", "CISM"),
+        (r"\bCompTIA\s+Security\+?\b", "CompTIA Security+"),
+        (r"\bPMP\b|\bProject\s+Management\s+Professional\b", "PMP"),
+    ]
+    for pat, canonical_name in cert_patterns:
+        if re.search(pat, text, re.IGNORECASE):
+            if canonical_name not in certs:
+                certs.append(canonical_name)
+    return certs
+
+def _generate_job_summary(title: str, dept: str, required_skills: List[str], min_years: Optional[float], about_text: str) -> str:
+    """Generates a concise, structured synthesis of what the role is hiring for."""
+    if about_text:
+        first_line = about_text.strip().splitlines()[0].strip()
+        first_line = re.sub(r"^[\s*•\-\d.]+", "", first_line).strip()
+        if 40 <= len(first_line) <= 220 and first_line.endswith((".", "!", "?")):
+            return first_line
+
+    tech_str = ", ".join(required_skills[:3]) if required_skills else "modern software engineering"
+    exp_clause = f" with {min_years:g}+ years of experience" if min_years else ""
+    return f"{title} in {dept or 'Engineering'} responsible for delivering scalable solutions using {tech_str}{exp_clause}."
+
+def _heuristic_jd_parser(jd_text: str) -> StructuredJobDescription:
+    """
+    Ground-truth parser extracting structured hiring requirements without hallucination.
+    Strictly separates Required vs. Preferred requirements and categorizes tech stack.
+    """
+    title = _extract_title_from_jd(jd_text)
+    sections = _segment_jd_sections(jd_text)
+
+    req_text = sections.get("required", "")
+    pref_text = sections.get("preferred", "")
+    resp_text = sections.get("responsibilities", "")
+    about_text = sections.get("about", "") or sections.get("intro", "")
+    general_text = sections.get("general", "")
+
+    # 1. Preferred Skills Extraction (Skills explicitly under preferred / nice-to-have)
+    preferred_raw: List[str] = []
+    if pref_text:
+        for skill in ALL_CATALOG_SKILLS:
+            if _skill_matches_in_text(skill, pref_text):
+                norm = _normalize_skill_name(skill)
+                if norm not in preferred_raw:
+                    preferred_raw.append(norm)
+
+    # Secondary check for inline preferred phrases (e.g. "nice to have: Kafka", "bonus: GraphQL")
+    inline_pref_matches = re.findall(r"(?:nice\s+to\s+have|bonus|plus|preferred)[\s:]+([^\n.]+)", jd_text, re.IGNORECASE)
+    for match_str in inline_pref_matches:
+        for skill in ALL_CATALOG_SKILLS:
+            if _skill_matches_in_text(skill, match_str):
+                norm = _normalize_skill_name(skill)
+                if norm not in preferred_raw:
+                    preferred_raw.append(norm)
+
+    # 2. Required Skills Extraction
+    required_raw: List[str] = []
+    if req_text:
+        for skill in ALL_CATALOG_SKILLS:
+            if _skill_matches_in_text(skill, req_text):
+                norm = _normalize_skill_name(skill)
+                # DO NOT move a preferred skill into required
+                if norm not in preferred_raw and norm not in required_raw:
+                    required_raw.append(norm)
+
+    # Also check skills stated in core responsibilities if not in preferred
+    if resp_text:
+        for skill in ALL_CATALOG_SKILLS:
+            if _skill_matches_in_text(skill, resp_text):
+                norm = _normalize_skill_name(skill)
+                if norm not in preferred_raw and norm not in required_raw:
+                    required_raw.append(norm)
+
+    # If neither req_text nor resp_text was found (e.g. single paragraph JD)
+    if not required_raw and not req_text and not resp_text:
+        for skill in ALL_CATALOG_SKILLS:
+            if _skill_matches_in_text(skill, jd_text):
+                norm = _normalize_skill_name(skill)
+                if norm not in preferred_raw and norm not in required_raw:
+                    required_raw.append(norm)
+
+    # Crucial zero-hallucination guarantee:
+    # If no skills are present in the JD, leave them empty! Never inject default placeholders.
+    required_skills = required_raw
+    preferred_skills = [s for s in preferred_raw if s not in required_skills]
+
+    # 3. Responsibilities Extraction
+    responsibilities: List[str] = []
+    target_resp_text = resp_text or about_text
+    if target_resp_text:
+        lines = target_resp_text.splitlines()
+        for line in lines:
+            cleaned = re.sub(r"^[\s*•\-\d.]+", "", line).strip()
+            if len(cleaned) >= 20 and not cleaned.lower().startswith(("responsibilities", "what you'll do")):
+                if cleaned not in responsibilities:
+                    responsibilities.append(cleaned)
+        responsibilities = responsibilities[:7]
+
+    # 4. Experience Extraction (min_years, max_years)
+    min_years, max_years = _extract_experience(req_text or jd_text)
+    seniority = _extract_seniority(title, req_text or jd_text, min_years)
+
+    # 5. Education & Certifications Extraction
+    combined_qual_text = f"{req_text}\n{pref_text}\n{sections.get('education', '')}\n{jd_text}"
+    education = _extract_education(combined_qual_text)
+    certifications = _extract_certifications(combined_qual_text)
+
+    # 6. Categorize Technologies
+    all_identified_skills = list(dict.fromkeys(required_skills + preferred_skills))
+    technologies_by_category: Dict[str, List[str]] = {
+        "languages": [s for s in all_identified_skills if s in TECH_TAXONOMY["languages"]],
+        "frameworks": [s for s in all_identified_skills if s in TECH_TAXONOMY["frameworks"]],
+        "databases": [s for s in all_identified_skills if s in TECH_TAXONOMY["databases"]],
+        "cloud_devops": [s for s in all_identified_skills if s in TECH_TAXONOMY["cloud_devops"]],
+        "tools_libraries": [s for s in all_identified_skills if s in TECH_TAXONOMY["tools_libraries"]],
+    }
+
+    # 7. Job Summary
+    job_summary = _generate_job_summary(title, "Engineering", required_skills, min_years, about_text)
+
+    # 8. Salary Range
+    sal_match = re.search(r"(\$\s*[\d,]+(?:\s*k)?\s*(?:-|to)\s*\$\s*[\d,]+(?:\s*k)?|\$\s*[\d,]+(?:\s*k)?)", jd_text, re.IGNORECASE)
+    salary_range = sal_match.group(1).strip() if sal_match else None
 
     return StructuredJobDescription(
         title=title,
@@ -181,14 +434,19 @@ def _heuristic_jd_parser(jd_text: str) -> StructuredJobDescription:
         location="Remote / Hybrid",
         work_model="remote",
         work_mode="remote",
-        seniority="Senior" if years >= 4 else "Mid",
-        experience_min_years=years,
-        minimum_years_experience=years,
-        required_skills=required,
-        preferred_skills=preferred,
+        seniority=seniority,
+        experience_min_years=min_years,
+        minimum_years_experience=min_years,
+        experience_max_years=max_years,
+        required_skills=required_skills,
+        preferred_skills=preferred_skills,
         responsibilities=responsibilities,
-        qualifications=qualifications,
-        salary_range="Competitive"
+        qualifications=education,
+        education=education,
+        certifications=certifications,
+        technologies_by_category=technologies_by_category,
+        job_summary=job_summary,
+        salary_range=salary_range
     )
 
 # --- File Extraction & Content Validation ---
@@ -686,16 +944,33 @@ def evaluate_candidate_job_fit(
     - Granular Requirement Evidence Matrix (Verified, Strong, Moderate, Weak, No Public Evidence)
     - Transparent callouts: Why?, Gaps, Claims Requiring Verification
     """
-    # Normalize skills
-    resume_skills = [s.lower() for s in (claims.claimed_languages + claims.claimed_frameworks + claims.claimed_tools)]
+    # Normalize skills across all 5 candidate claim categories
+    raw_resume_skills = (
+        (claims.claimed_languages or []) +
+        (claims.claimed_frameworks or []) +
+        (getattr(claims, "claimed_databases", []) or []) +
+        (getattr(claims, "claimed_cloud_devops", []) or []) +
+        (getattr(claims, "claimed_tools", []) or [])
+    )
+    resume_skills = [str(s).strip().lower() for s in raw_resume_skills if s and str(s).strip()]
     github_skills = [l.lower() for l in evidence.languages_detected.keys()]
-    repo_names = [r.get("name", "").lower() for r in (getattr(evidence, "repo_highlights", []) or [])]
+    repo_names = [
+        (r.name if hasattr(r, "name") else (r.get("name", "") if isinstance(r, dict) else "")).lower()
+        for r in (getattr(evidence, "repo_highlights", []) or [])
+    ]
     candidate_all_skills = set(resume_skills + github_skills)
+
+    github_available = bool(
+        getattr(evidence, "profile_found", False) and 
+        getattr(evidence, "username", "").lower() not in ("none", "", "null", "undefined") and 
+        not getattr(evidence, "api_rate_limited", False)
+    )
 
     # 1. Required Skills Evaluation
     req_skills = [s.strip() for s in jd.required_skills if s.strip()]
     matched_req = []
     missing_req = []
+    unverified_req = []
     evidence_matrix = []
 
     for r in req_skills:
@@ -719,14 +994,20 @@ def evaluate_candidate_job_fit(
             meter_pct = 85
             cand_ev = "Demonstrated in public GitHub code"
         elif in_resume:
-            strength = "WEAK_EVIDENCE"
-            meter_pct = 35
-            cand_ev = "Resume claim only — Public evidence not found"
-            missing_req.append(r)
+            matched_req.append(r)
+            unverified_req.append(r)
+            if github_available:
+                strength = "WEAK_EVIDENCE"
+                meter_pct = 40
+                cand_ev = "Resume claim only — Public code evidence not found"
+            else:
+                strength = "UNVERIFIED_CLAIM"
+                meter_pct = 50
+                cand_ev = "Resume claim (Public GitHub profile not linked / private enterprise repository)"
         else:
             strength = "NO_PUBLIC_EVIDENCE"
             meter_pct = 0
-            cand_ev = "No public evidence found"
+            cand_ev = "No resume or public evidence found"
             missing_req.append(r)
 
         evidence_matrix.append({
@@ -750,17 +1031,23 @@ def evaluate_candidate_job_fit(
 
         if in_resume and in_github:
             matched_pref.append(p)
-            strength = "STRONG_EVIDENCE"
-            meter_pct = 85
-            cand_ev = "Resume + verified public repository"
+            if evidence.original_repos_count > 0 or evidence.documentation_ratio >= 0.5:
+                strength = "VERIFIED"
+                meter_pct = 90
+                cand_ev = "Resume + verified public repository"
+            else:
+                strength = "STRONG_EVIDENCE"
+                meter_pct = 80
+                cand_ev = "Resume + GitHub code presence"
         elif in_github:
             matched_pref.append(p)
             strength = "STRONG_EVIDENCE"
             meter_pct = 80
             cand_ev = "Demonstrated in public GitHub code"
         elif in_resume:
-            strength = "WEAK_EVIDENCE"
-            meter_pct = 35
+            matched_pref.append(p)
+            strength = "WEAK_EVIDENCE" if github_available else "UNVERIFIED_CLAIM"
+            meter_pct = 50
             cand_ev = "Resume claim only"
         else:
             strength = "NO_PUBLIC_EVIDENCE"
@@ -778,20 +1065,24 @@ def evaluate_candidate_job_fit(
 
     pref_match_pct = int((len(matched_pref) / len(pref_skills)) * 100) if pref_skills else 80
 
-    # 3. Experience Match Evaluation
-    cand_exp = claims.years_experience or 1.0
-    if cand_exp >= jd.experience_min_years:
+    # 3. Experience Match Evaluation (Safe handling of None/missing requirements)
+    cand_exp = float(claims.years_experience or 1.0)
+    min_exp_req = jd.experience_min_years
+    has_exp_requirement = (min_exp_req is not None and min_exp_req > 0)
+    if not has_exp_requirement:
+        exp_match_pct = 100
+    elif cand_exp >= min_exp_req:
         exp_match_pct = 100
     else:
-        exp_match_pct = int((cand_exp / max(1.0, jd.experience_min_years)) * 100)
+        exp_match_pct = int((cand_exp / max(1.0, min_exp_req)) * 100)
 
     # 4. Contradiction Detection
     contradictions = []
     if missing_req and len(missing_req) >= 2:
         contradictions.append(f"Missing mandatory requirements: {', '.join(missing_req[:3])}.")
-    if cand_exp < jd.experience_min_years:
+    if has_exp_requirement and cand_exp < min_exp_req:
         contradictions.append(
-            f"Experience shortfall: Candidate possesses {cand_exp} years vs required {jd.experience_min_years} years."
+            f"Experience shortfall: Candidate possesses {cand_exp:.1f} years vs required {min_exp_req:.1f} years."
         )
 
     # 5. Composite Weighted Match
@@ -805,11 +1096,22 @@ def evaluate_candidate_job_fit(
     else:
         recommendation = "POOR_MATCH"
 
+    # Candidate without public code cannot be granted automatic STRONG_MATCH
+    if (not github_available or getattr(evidence, "total_public_repos", 0) == 0) and recommendation == "STRONG_MATCH":
+        recommendation = "POTENTIAL_MATCH"
+
     # 6. Granular 0-100 Competency Dimension Breakdown
-    github_ev_score = min(100, max(15, int((evidence.original_repos_count * 15) + (evidence.documentation_ratio * 40) + min(30, int(evidence.total_stars * 0.5)))))
-    code_qual_score = min(100, max(15, int((evidence.documentation_ratio * 65) + (25 if evidence.original_repos_count > 0 else 0) + (10 if evidence.recent_activity_count > 0 else 0))))
+    if github_available:
+        github_ev_score = min(100, max(15, int((evidence.original_repos_count * 15) + (evidence.documentation_ratio * 40) + min(30, int(evidence.total_stars * 0.5)))))
+        code_qual_score = min(100, max(15, int((evidence.documentation_ratio * 65) + (25 if evidence.original_repos_count > 0 else 0) + (10 if evidence.recent_activity_count > 0 else 0))))
+    else:
+        # Contractual neutral baseline for candidates without public GitHub (no penalty / fraud)
+        github_ev_score = 65
+        code_qual_score = 60
+
     resp_match_score = min(100, max(20, int(req_match_pct * 0.70 + exp_match_pct * 0.30)))
-    claim_verif_score = min(100, max(10, int(100 - (len([item for item in evidence_matrix if item["strength"] == "WEAK_EVIDENCE"]) * 15))))
+    unverified_penalty = len([item for item in evidence_matrix if item["strength"] in ("WEAK_EVIDENCE", "UNVERIFIED_CLAIM")])
+    claim_verif_score = min(100, max(10, int(100 - (unverified_penalty * 10)))) if github_available else 60
 
     breakdown = {
         "required_technical_skills": req_match_pct,
@@ -824,30 +1126,40 @@ def evaluate_candidate_job_fit(
     # 7. Callouts: Why, Gaps, Verification Claims
     why_reasons = []
     if matched_req:
-        why_reasons.append(f"Demonstrated verified proficiency in core mandatory skills: {', '.join(matched_req[:4])}.")
-    if cand_exp >= jd.experience_min_years:
-        why_reasons.append(f"Meets or exceeds minimum required experience ({cand_exp:.1f} yrs vs {jd.experience_min_years:.1f} yrs).")
-    if evidence.original_repos_count > 0:
+        why_reasons.append(f"Demonstrated proficiency in core mandatory skills: {', '.join(matched_req[:4])}.")
+    if has_exp_requirement:
+        if cand_exp >= min_exp_req:
+            why_reasons.append(f"Meets or exceeds minimum required experience ({cand_exp:.1f} yrs vs {min_exp_req:.1f} yrs).")
+    else:
+        why_reasons.append(f"Candidate brings {cand_exp:.1f} years of relevant experience.")
+
+    if github_available and evidence.original_repos_count > 0:
         why_reasons.append(f"Active public code footprint: {evidence.original_repos_count} original repositories with {evidence.documentation_ratio * 100:.0f}% documentation ratio.")
+    elif not github_available:
+        why_reasons.append("Enterprise candidate: Public GitHub profile not linked. Neutral evaluation baseline applied.")
+
     if not why_reasons:
         why_reasons.append(f"Candidate evaluated against '{jd.title}'. Initial profile screened.")
 
     gaps = []
     if missing_req:
-        gaps.append(f"Missing or unverified mandatory skills: {', '.join(missing_req)}.")
-    if cand_exp < jd.experience_min_years:
-        gaps.append(f"Experience gap: Has {cand_exp:.1f} years, role requires {jd.experience_min_years:.1f} years.")
+        gaps.append(f"Missing mandatory skills: {', '.join(missing_req)}.")
+    if has_exp_requirement and cand_exp < min_exp_req:
+        gaps.append(f"Experience gap: Has {cand_exp:.1f} years, role requires {min_exp_req:.1f} years.")
     if not gaps:
         gaps.append("No critical technical gaps identified for the mandatory requirements.")
 
     claims_req_verification = []
-    weak_items = [item["requirement"] for item in evidence_matrix if item["strength"] == "WEAK_EVIDENCE"]
+    weak_items = [item["requirement"] for item in evidence_matrix if item["strength"] in ("WEAK_EVIDENCE", "UNVERIFIED_CLAIM")]
     if weak_items:
-        claims_req_verification.append(f"Resume lists {', '.join(weak_items[:4])}, but no public code samples or repositories were found.")
-    if claims.years_experience and claims.years_experience > 4 and evidence.recent_activity_count == 0:
+        if github_available:
+            claims_req_verification.append(f"Resume lists {', '.join(weak_items[:4])}, but no public code samples or repositories were found.")
+        else:
+            claims_req_verification.append(f"Resume lists {', '.join(weak_items[:4])} (requires recruiter or assessment verification as code is private).")
+    if github_available and claims.years_experience and claims.years_experience > 4 and evidence.recent_activity_count == 0:
         claims_req_verification.append("Senior experience claimed, but no active repository commits recorded in the past 6 months.")
     if not claims_req_verification:
-        claims_req_verification.append("All primary technical claims correlate with verifiable evidence.")
+        claims_req_verification.append("All technical claims verified against public evidence.")
 
     summary = (
         f"{claims.name} demonstrates a {overall_match}/100 Job Match Score for '{jd.title}'. "
@@ -886,30 +1198,101 @@ class JobDescriptionService:
         self.org_id = org_id
 
     async def create_job_from_text(
-        self, title: str, department: str, raw_jd_text: str, min_years: Optional[int] = 3
+        self,
+        title: str,
+        department: str,
+        raw_jd_text: str,
+        location: str = "Remote",
+        work_model: str = "remote",
+        seniority: Optional[str] = None,
+        min_years: Optional[float] = None
     ) -> JobOpening:
         parsed = parse_job_description(raw_jd_text)
         if title:
             parsed.title = title
         if department:
             parsed.department = department
-        if min_years:
+        if min_years is not None:
             parsed.experience_min_years = float(min_years)
+        if location:
+            parsed.location = location
+        if work_model:
+            parsed.work_model = work_model
+        if seniority:
+            parsed.seniority = seniority
 
         job = JobOpening(
             organization_id=self.org_id,
             title=parsed.title,
             department=parsed.department,
+            location=parsed.location or location,
+            work_model=parsed.work_model or work_model,
+            seniority=parsed.seniority or (seniority or "Senior"),
             raw_jd_text=raw_jd_text,
-            required_skills=parsed.required_skills,
-            preferred_skills=parsed.preferred_skills,
-            experience_min_years=parsed.experience_min_years,
+            required_skills=parsed.required_skills or [],
+            preferred_skills=parsed.preferred_skills or [],
+            responsibilities=parsed.responsibilities or [],
+            experience_min_years=parsed.experience_min_years if parsed.experience_min_years is not None else 0.0,
+            experience_max_years=parsed.experience_max_years,
+            salary_range=parsed.salary_range,
             status="active"
         )
         self.db.add(job)
         await self.db.commit()
         await self.db.refresh(job)
         return job
+
+    async def get_job_intelligence(self, job_id: UUID) -> Dict[str, Any]:
+        """
+        Retrieves the saved JobOpening and returns complete, structured hiring intelligence
+        extracted deterministically from its authoritative raw_jd_text.
+        """
+        stmt = select(JobOpening).where(JobOpening.id == job_id, JobOpening.organization_id == self.org_id)
+        res = await self.db.execute(stmt)
+        job = res.scalar_one_or_none()
+        if not job:
+            raise ValueError(f"Job opening {job_id} not found.")
+
+        parsed = parse_job_description(job.raw_jd_text)
+
+        # Merge extracted with any manual overrides if present in DB
+        required_skills = parsed.required_skills if parsed.required_skills else (job.required_skills or [])
+        preferred_skills = parsed.preferred_skills if parsed.preferred_skills else (job.preferred_skills or [])
+        # Ensure strict separation: no preferred skills in required skills
+        preferred_skills = [s for s in preferred_skills if s not in required_skills]
+
+        responsibilities = parsed.responsibilities if parsed.responsibilities else (job.responsibilities or [])
+        min_years = parsed.experience_min_years if parsed.experience_min_years is not None else (job.experience_min_years if job.experience_min_years > 0 else None)
+        max_years = parsed.experience_max_years if parsed.experience_max_years is not None else job.experience_max_years
+
+        return {
+            "job_id": str(job.id),
+            "title": job.title or parsed.title,
+            "department": job.department or parsed.department,
+            "location": job.location or parsed.location,
+            "work_model": job.work_model or parsed.work_model,
+            "seniority": job.seniority or parsed.seniority,
+            "experience_min_years": min_years,
+            "experience_max_years": max_years,
+            "required_skills": required_skills,
+            "preferred_skills": preferred_skills,
+            "responsibilities": responsibilities,
+            "education": parsed.education or [],
+            "certifications": parsed.certifications or [],
+            "technologies_by_category": parsed.technologies_by_category or {
+                "languages": [],
+                "frameworks": [],
+                "databases": [],
+                "cloud_devops": [],
+                "tools_libraries": []
+            },
+            "job_summary": parsed.job_summary or "",
+            "salary_range": job.salary_range or parsed.salary_range,
+            "raw_jd_text": job.raw_jd_text,
+            "status": job.status,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None
+        }
 
     async def match_candidate_to_job(
         self, job_id: UUID, candidate_id: UUID
@@ -944,7 +1327,7 @@ class JobDescriptionService:
             claimed_frameworks=[],
             claimed_skills=candidate.tags or [],
             projects=[],
-            education="Relevant Degree"
+            education=["Relevant Degree"]
         )
         evidence = GitHubEvidence(
             username=candidate.github_username or "candidate",

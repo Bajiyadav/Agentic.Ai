@@ -73,18 +73,27 @@ class Candidate(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     email = Column(String(255), nullable=True, index=True)
     github_username = Column(String(100), nullable=True, index=True)
     linkedin_url = Column(String(500), nullable=True)
     phone = Column(String(50), nullable=True)
+    location = Column(String(255), nullable=True)
+    current_title = Column(String(255), nullable=True)
     years_experience = Column(Float, nullable=True)
+    raw_summary = Column(Text, nullable=True)
+    education = Column(JSON, default=list)
+    certifications = Column(JSON, default=list)
+    projects = Column(JSON, default=list)
     tags = Column(JSON, default=list)
+    parsed_claims_json = Column(JSON, default=dict)
     is_deleted = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     organization = relationship("Organization", back_populates="candidates")
+    job_opening = relationship("JobOpening", back_populates="candidates", foreign_keys=[job_id])
     applications = relationship("Application", back_populates="candidate", cascade="all, delete-orphan")
     resumes = relationship("Resume", back_populates="candidate", cascade="all, delete-orphan")
     github_profile = relationship("GitHubProfile", back_populates="candidate", uselist=False, cascade="all, delete-orphan")
@@ -96,6 +105,7 @@ class Application(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="SET NULL"), nullable=True, index=True)
     job_title = Column(String(255), default="Software Engineer", nullable=False)
     source = Column(String(50), default="upload", nullable=False)  # upload, email, webhook, batch
     status = Column(String(50), default="pending", nullable=False)  # pending, processing, screened, shortlisted, review, rejected
@@ -112,6 +122,7 @@ class Resume(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="SET NULL"), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     file_size_bytes = Column(Integer, nullable=False)
     mime_type = Column(String(100), default="application/pdf", nullable=False)
@@ -317,13 +328,18 @@ class JobOpening(Base):
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     organization = relationship("Organization")
+    candidates = relationship("Candidate", back_populates="job_opening", cascade="all, delete-orphan")
     matches = relationship("JobMatchScore", back_populates="job_opening", cascade="all, delete-orphan")
     assessments = relationship("CandidateAssessment", back_populates="job_opening", cascade="all, delete-orphan")
+    job_assessment = relationship("JobAssessment", back_populates="job_opening", uselist=False, cascade="all, delete-orphan")
     interviews = relationship("TechnicalInterview", back_populates="job_opening", cascade="all, delete-orphan")
 
 # 13. Job-Specific Candidate Match Matrix
 class JobMatchScore(Base):
     __tablename__ = "job_match_scores"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "job_id", name="uq_candidate_job_match_score"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -331,21 +347,76 @@ class JobMatchScore(Base):
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
     audit_id = Column(UUID(as_uuid=True), ForeignKey("audits.id", ondelete="CASCADE"), nullable=True, index=True)
     
+    # Deterministic Overall Match Score: 0–100
     overall_match_pct = Column(Integer, nullable=False)
-    required_skills_match_pct = Column(Integer, nullable=False)
-    preferred_skills_match_pct = Column(Integer, nullable=False)
-    experience_match_pct = Column(Integer, nullable=False)
+    
+    # 6 Deterministic Dimensions (Sum to 100%)
+    required_skills_match_pct = Column(Integer, nullable=False)     # 20%
+    experience_match_pct = Column(Integer, nullable=False)          # 15%
+    github_match_pct = Column(Integer, nullable=True)               # 15%
+    claim_verification_pct = Column(Integer, nullable=True)         # 10%
+    assessment_match_pct = Column(Integer, nullable=True)           # 25%
+    responsibilities_match_pct = Column(Integer, nullable=True)     # 15%
+    
+    # Preferred skills tracking (does not penalize as mandatory failure)
+    preferred_skills_match_pct = Column(Integer, nullable=True)
+    
+    # Advisory Recommendation: SHORTLIST | REVIEW | REJECT
+    recommendation = Column(String(50), nullable=True)
+    job_fit_recommendation = Column(String(50), nullable=False)  # Legacy compatibility
+    summary = Column(Text, nullable=False)
+    
+    # Structured Scorecard Breakdown & Matrices
+    dimensions_json = Column(JSON, default=dict)
+    strengths_json = Column(JSON, default=list)                     # 3–5 evidence-based reasons "Why"
+    gaps_json = Column(JSON, default=list)                          # Specific missing competencies
+    claims_requiring_verification_json = Column(JSON, default=list) # Claims lacking evidence
+    evidence_conflicts_json = Column(JSON, default=list)            # Conflicts (e.g. resume vs assessment)
+    required_skills_matrix_json = Column(JSON, default=list)        # Skill | Resume | GitHub | Assessment | Final
+    preferred_skills_matrix_json = Column(JSON, default=list)       # Preferred skills status
+    responsibilities_matrix_json = Column(JSON, default=list)       # Responsibility match breakdown
+    assessment_summary_json = Column(JSON, default=dict)            # Assessment details
+    github_summary_json = Column(JSON, default=dict)                # GitHub details
+    
+    # Legacy compatibility fields
     matched_required_skills = Column(JSON, default=list)
     missing_required_skills = Column(JSON, default=list)
     matched_preferred_skills = Column(JSON, default=list)
     contradictions = Column(JSON, default=list)
-    job_fit_recommendation = Column(String(50), nullable=False)  # STRONG_MATCH, POTENTIAL_MATCH, POOR_MATCH
-    summary = Column(Text, nullable=False)
+    
+    # Recruiter Override & Decision Audit Trail
+    recruiter_decision = Column(String(50), nullable=True)          # SHORTLIST | REVIEW | REJECT
+    recruiter_reason = Column(Text, nullable=True)                  # Detailed rationale
+    recruiter_override_score = Column(Integer, nullable=True)       # Optional manual score override
+    recruiter_decision_at = Column(DateTime(timezone=True), nullable=True)
+    recruiter_decision_by = Column(String(255), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     job_opening = relationship("JobOpening", back_populates="matches")
     candidate = relationship("Candidate")
     audit = relationship("Audit")
+
+# 13b. Recruiter Job Assessment (Assessment Builder & Job Specification)
+class JobAssessment(Base):
+    __tablename__ = "job_assessments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    duration_minutes = Column(Integer, default=30, nullable=False)
+    status = Column(String(50), default="DRAFT", nullable=False)  # DRAFT, PUBLISHED, ARCHIVED
+    questions_json = Column(JSON, default=list, nullable=False)
+    skills_covered = Column(JSON, default=list, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+
+    job_opening = relationship("JobOpening", back_populates="job_assessment")
+    candidate_assessments = relationship("CandidateAssessment", back_populates="job_assessment")
 
 # 14. Automatic Technical Assessments
 class CandidateAssessment(Base):
@@ -354,6 +425,7 @@ class CandidateAssessment(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     job_id = Column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="CASCADE"), nullable=True, index=True)
+    assessment_id = Column(UUID(as_uuid=True), ForeignKey("job_assessments.id", ondelete="SET NULL"), nullable=True, index=True)
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
     duration_minutes = Column(Integer, default=30, nullable=False)  # 10, 20, 30, 60
     status = Column(String(50), default="pending", nullable=False)  # pending, in_progress, completed, expired
@@ -379,6 +451,7 @@ class CandidateAssessment(Base):
     sandbox_results = Column(JSON, default=dict, nullable=False)  # Test case execution results
 
     job_opening = relationship("JobOpening", back_populates="assessments")
+    job_assessment = relationship("JobAssessment", back_populates="candidate_assessments")
     candidate = relationship("Candidate")
 
 # 15. AI Technical Interviewer
@@ -457,4 +530,26 @@ class EvidenceNode(Base):
 
     candidate = relationship("Candidate")
     audit = relationship("Audit")
+
+
+# 19. Candidate Job Evidence Audits (Test 5 Milestone: Job-Specific Claim Verifications)
+class CandidateJobEvidenceAudit(Base):
+    __tablename__ = "candidate_job_evidence_audits"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("job_openings.id", ondelete="CASCADE"), nullable=False, index=True)
+    github_username = Column(String(100), nullable=True)
+    status = Column(String(50), default="Completed", nullable=False)  # Completed, Failed, No_GitHub_Provided, Rate_Limited
+    audit_data = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "job_id", name="uq_candidate_job_evidence_audit"),
+    )
+
+    candidate = relationship("Candidate")
+    job_opening = relationship("JobOpening")
 

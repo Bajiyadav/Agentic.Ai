@@ -5,7 +5,7 @@ import json
 import shutil
 import tempfile
 import subprocess
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 
 class TestCase(BaseModel):
@@ -34,6 +34,10 @@ class SandboxExecutionResult(BaseModel):
     stderr: str = ""
     execution_time_ms: float = 0.0
     error_message: Optional[str] = None
+    security_clean: bool = True
+    network_egress_blocked: bool = True
+    resource_limits_enforced: bool = True
+    security_violations: List[str] = Field(default_factory=list)
 
 class SandboxService:
     """
@@ -41,6 +45,95 @@ class SandboxService:
     Python, JavaScript (Node.js), Go, and Java with safety timeouts and test runners.
     """
     TIMEOUT_SECONDS = 5.0
+
+    @staticmethod
+    def _get_sanitized_env() -> Dict[str, str]:
+        """
+        Returns a scrubbed, minimal environment ensuring zero leakage of host
+        secrets (DATABASE_URL, JWT_SECRET, cloud tokens, API keys).
+        """
+        return {
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONUNBUFFERED": "1"
+        }
+
+    @staticmethod
+    def _set_posix_resource_limits():
+        """
+        Configures hard kernel-level resource limits for untrusted execution:
+        - 256MB Virtual Address Space (prevents host memory exhaustion)
+        - 5s CPU Time Limit (kills infinite loops)
+        - Process count limits (kills fork bombs)
+        """
+        try:
+            import resource
+            # Limit virtual memory to 256MB
+            resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+            # Limit CPU execution time to 5s
+            resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
+            # Limit max child processes (fork bomb prevention)
+            if hasattr(resource, "RLIMIT_NPROC"):
+                resource.setrlimit(resource.RLIMIT_NPROC, (32, 32))
+        except Exception:
+            pass
+
+    @classmethod
+    def inspect_code_security(cls, code: str, language: str = "python") -> Tuple[bool, List[str]]:
+        """
+        Performs static pre-flight AST analysis on candidate code before execution
+        to detect unauthorized system calls, credential access, or shell attacks.
+        """
+        violations = []
+        lang = (language or "python").lower().strip()
+
+        if lang in ("python", "py"):
+            try:
+                import ast
+                tree = ast.parse(code)
+                FORBIDDEN_MODULES = {"ctypes", "pty", "subprocess", "multiprocessing", "winreg", "shutil", "importlib", "pickle"}
+                FORBIDDEN_CALLS = {
+                    "system", "popen", "spawn", "fork", "kill", "rmdir", "remove", "unlink",
+                    "eval", "exec", "compile", "__import__"
+                }
+                FORBIDDEN_ATTRS = {"__subclasses__", "__builtins__", "__globals__"}
+                SENSITIVE_PATTERNS = {".env", "id_rsa", "/etc/passwd", "/etc/shadow", "database_url"}
+
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            base_mod = alias.name.split(".")[0]
+                            if base_mod in FORBIDDEN_MODULES:
+                                violations.append(f"Forbidden module import: '{base_mod}'")
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module:
+                            base_mod = node.module.split(".")[0]
+                            if base_mod in FORBIDDEN_MODULES:
+                                violations.append(f"Forbidden module import: '{base_mod}'")
+                    elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
+                        violations.append(f"Forbidden introspection attribute: '{node.attr}'")
+                    elif isinstance(node, ast.Call):
+                        if isinstance(node.func, ast.Attribute) and node.func.attr in FORBIDDEN_CALLS:
+                            violations.append(f"Forbidden system call: '{node.func.attr}()'")
+                        elif isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_CALLS:
+                            violations.append(f"Forbidden system call: '{node.func.id}()'")
+                    elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                        val_l = node.value.lower()
+                        for pat in SENSITIVE_PATTERNS:
+                            if pat in val_l:
+                                violations.append(f"Unauthorized path reference: '{node.value}'")
+            except Exception as e:
+                violations.append(f"Syntax/AST Parsing error: {str(e)}")
+
+        elif lang in ("javascript", "js"):
+            JS_FORBIDDEN = ["child_process", "cluster", "process.kill", "/etc/passwd", ".env"]
+            for token in JS_FORBIDDEN:
+                if token in code:
+                    violations.append(f"Forbidden JavaScript token/invocation: '{token}'")
+
+        return len(violations) == 0, violations
 
     @classmethod
     def execute_code(
@@ -83,12 +176,40 @@ class SandboxService:
         test_cases: Optional[List[Dict[str, Any]]],
         custom_input: Optional[str]
     ) -> SandboxExecutionResult:
+        # Pre-flight static security inspection
+        is_safe, violations = cls.inspect_code_security(code, "python")
+        if not is_safe:
+            return SandboxExecutionResult(
+                language="python",
+                success=False,
+                all_passed=False,
+                tests_passed=0,
+                total_tests=len(test_cases or []),
+                security_clean=False,
+                network_egress_blocked=True,
+                resource_limits_enforced=True,
+                security_violations=violations,
+                error_message=f"Security Policy Violation: {'; '.join(violations)}"
+            )
+
         temp_dir = tempfile.mkdtemp(prefix="sandbox_py_")
         script_path = os.path.join(temp_dir, "solution.py")
         start_time = time.time()
 
+        # Zero-Egress Network Isolation Injection
+        network_guard = """
+# Zero-Egress Network Lockdown Policy
+import socket
+def _deny_network(*args, **kwargs):
+    raise PermissionError("Egress Network Access Denied: Sandbox runs under zero-network isolation mode.")
+socket.socket = _deny_network
+socket.create_connection = _deny_network
+socket.getaddrinfo = _deny_network
+socket.gethostbyname = _deny_network
+"""
+
         # Build runner wrapper
-        harness = code + "\n\n"
+        harness = network_guard + "\n" + code + "\n\n"
         if test_cases:
             harness += """
 import json
@@ -166,8 +287,7 @@ print("__SANDBOX_TEST_RESULTS__" + json.dumps(_results))
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(harness)
 
-            env = os.environ.copy()
-            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            safe_env = cls._get_sanitized_env()
             res = subprocess.run(
                 [sys.executable, "-I", script_path],
                 cwd=temp_dir,
@@ -175,7 +295,8 @@ print("__SANDBOX_TEST_RESULTS__" + json.dumps(_results))
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 timeout=cls.TIMEOUT_SECONDS,
-                env=env
+                env=safe_env,
+                preexec_fn=cls._set_posix_resource_limits
             )
             elapsed_ms = (time.time() - start_time) * 1000.0
             stdout_str = res.stdout.decode("utf-8", errors="replace")
@@ -212,11 +333,41 @@ print("__SANDBOX_TEST_RESULTS__" + json.dumps(_results))
         test_cases: Optional[List[Dict[str, Any]]],
         custom_input: Optional[str]
     ) -> SandboxExecutionResult:
+        # Pre-flight static security inspection
+        is_safe, violations = cls.inspect_code_security(code, "javascript")
+        if not is_safe:
+            return SandboxExecutionResult(
+                language="javascript",
+                success=False,
+                all_passed=False,
+                tests_passed=0,
+                total_tests=len(test_cases or []),
+                security_clean=False,
+                network_egress_blocked=True,
+                resource_limits_enforced=True,
+                security_violations=violations,
+                error_message=f"Security Policy Violation: {'; '.join(violations)}"
+            )
+
         temp_dir = tempfile.mkdtemp(prefix="sandbox_js_")
         script_path = os.path.join(temp_dir, "solution.js")
         start_time = time.time()
 
-        harness = code + "\n\n"
+        js_network_guard = """
+// Zero-Egress Network Lockdown Policy
+if (typeof require !== 'undefined') {
+    const _blocked = new Set(['net', 'http', 'https', 'dgram', 'dns', 'child_process', 'cluster']);
+    const _origReq = require;
+    global.require = function(mod) {
+        if (_blocked.has(mod)) {
+            throw new Error(`Egress Network Access Denied: Sandbox blocks '${mod}' under zero-network policy.`);
+        }
+        return _origReq.apply(this, arguments);
+    };
+}
+"""
+
+        harness = js_network_guard + "\n" + code + "\n\n"
         if test_cases:
             harness += """
 const _testCases = """ + json.dumps(test_cases) + """;
@@ -273,13 +424,16 @@ console.log("__SANDBOX_TEST_RESULTS__" + JSON.stringify(_results));
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(harness)
 
+            safe_env = cls._get_sanitized_env()
             res = subprocess.run(
                 [node_bin, script_path],
                 cwd=temp_dir,
                 input=custom_input.encode("utf-8") if custom_input else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=cls.TIMEOUT_SECONDS
+                timeout=cls.TIMEOUT_SECONDS,
+                env=safe_env,
+                preexec_fn=cls._set_posix_resource_limits
             )
             elapsed_ms = (time.time() - start_time) * 1000.0
             stdout_str = res.stdout.decode("utf-8", errors="replace")

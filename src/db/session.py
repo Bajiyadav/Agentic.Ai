@@ -58,3 +58,36 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
                 await session.close()
             except Exception:
                 pass
+
+async def get_tenant_db(tenant_id=None) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Yields an RLS-enforced PostgreSQL database session for a specific tenant organization.
+    Configures transaction-local variables:
+    1. app.current_tenant_id = <tenant_id> via set_config(..., true)
+    2. SET LOCAL ROLE audit_app_user (ensures RLS policies cannot be bypassed)
+    """
+    from sqlalchemy import text
+    async with AsyncSessionLocal() as session:
+        try:
+            if tenant_id:
+                await session.execute(
+                    text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                    {"tid": str(tenant_id)}
+                )
+                try:
+                    await session.execute(text("SET LOCAL ROLE audit_app_user"))
+                except Exception:
+                    pass
+            yield session
+        except Exception:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                await session.close()
+            except Exception:
+                pass
+

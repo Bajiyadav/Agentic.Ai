@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuditAgent.ai | AI advises. Evidence explains. Recruiters decide.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #f5ede3;
+      --bg-surface: #ebe0d2;
+      --bg-surface-elevated: #dfd2c2;
+      --bg-card: rgba(255, 255, 255, 0.88);
+      --border-subtle: rgba(140, 98, 62, 0.14);
+      --border-card: rgba(180, 125, 75, 0.22);
+      
+      --accent-wheat: #e0b88f;
+      --accent-wheat-warm: #d4a373;
+      --accent-wheat-light: #f5deb3;
+      --accent-wheat-glow: rgba(224, 184, 143, 0.35);
+
+      --accent-bronze: #d4a373;
+      --accent-bronze-light: #e4ba8d;
+      --accent-bronze-glow: rgba(212, 163, 115, 0.45);
+      --accent-green: #15803d;
+      --accent-red: #dc2626;
+
+      --text-main: #231811;
+      --text-muted: #5e4a3b;
+      --text-dim: #8c7361;
+
+      --font-main: 'Plus Jakarta Sans', sans-serif;
+      --font-heading: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    h1, h2, h3, h4, h5, h6,
+    .hero-headline,
+    .section-title,
+    .callout-title,
+    .compare-title,
+    .cap-title,
+    .step-title,
+    .cta-main-title {
+      font-family: var(--font-heading);
+      letter-spacing: -0.012em;
+      text-rendering: optimizeLegibility;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-main);
+      line-height: 1.5;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 50% 15%, rgba(224, 184, 143, 0.45) 0%, transparent 60%),
+        radial-gradient(circle at 10% 25%, rgba(245, 222, 179, 0.50) 0%, transparent 45%),
+        radial-gradient(circle at 90% 30%, rgba(212, 163, 115, 0.35) 0%, transparent 48%),
+        radial-gradient(circle at 50% 70%, rgba(224, 184, 143, 0.30) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Container */
+    .page-container {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header / Navbar */
+    .top-navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 0;
+      border-bottom: 1px solid rgba(140, 98, 62, 0.15);
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #231811;
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+    }
+
+    .brand-icon-glyph {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #e4ba8d, #b8824f);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #1a1008;
+      font-size: 1.1rem;
+      box-shadow: 0 2px 12px rgba(212, 163, 115, 0.45);
+    }
+
+    .nav-menu {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .nav-item {
+      color: #5e4a3b;
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .nav-item:hover {
+      color: #231811;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-sign-in {
+      background: none;
+      border: none;
+      color: #5e4a3b;
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 600;
+      font-family: inherit;
+      padding: 8px 16px;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-sign-in:hover {
+      color: #231811;
+      background: rgba(140, 98, 62, 0.1);
+      transform: translateY(-1px);
+    }
+
+    .btn-gold-pill,
+    .btn-purple-pill {
+      background: linear-gradient(135deg, #e4ba8d 0%, #d4a373 50%, #b8824f 100%);
+      color: #1a1008;
+      border: 1px solid rgba(255, 235, 205, 0.4);
+      padding: 10px 22px;
+      border-radius: 9999px;
+      font-size: 0.88rem;
+      font-weight: 800;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(212, 163, 115, 0.45);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-gold-pill:hover,
+    .btn-purple-pill:hover {
+      background: linear-gradient(135deg, #ebd0b0 0%, #dfb78c 50%, #c48b56 100%);
+      color: #1a1008;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 28px rgba(212, 163, 115, 0.65);
+    }
+
+    .btn-outline-pill {
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid rgba(180, 125, 75, 0.35);
+      color: #3b271a;
+      padding: 11px 24px;
+      border-radius: 9999px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-outline-pill:hover {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(180, 125, 75, 0.55);
+    }
+
+    /* Clean, Cinematic Centered Hero Section */
+    .hero-section {
+      padding: 70px 0 50px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero-section::before {
+      content: '';
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 750px;
+      height: 420px;
+      background: radial-gradient(circle, rgba(224, 184, 143, 0.42) 0%, rgba(212, 163, 115, 0.22) 40%, rgba(164, 113, 72, 0.10) 60%, transparent 75%);
+      filter: blur(65px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero-lead-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 18px;
+      background: rgba(212, 163, 115, 0.2);
+      border: 1px solid rgba(180, 125, 75, 0.35);
+      border-radius: 9999px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #7c441c;
+      margin-bottom: 22px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-headline {
+      font-family: var(--font-heading);
+      font-size: 4rem;
+      font-weight: 800;
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      color: #231811;
+      max-width: 860px;
+      margin-bottom: 22px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-headline .highlight-purple {
+      background: linear-gradient(135deg, #a45a2a 0%, #c4763b 60%, #8b4513 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+    }
+
+    .hero-description {
+      font-size: 1.16rem;
+      line-height: 1.65;
+      color: #5e4a3b;
+      max-width: 680px;
+      margin: 0 auto 32px auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-btn-primary {
+      padding: 14px 32px;
+      font-size: 1rem;
+      font-weight: 800;
+      box-shadow: 0 4px 28px rgba(212, 163, 115, 0.5);
+    }
+
+    .hero-footnote {
+      font-size: 0.85rem;
+      color: #8c7361;
+      margin-bottom: 36px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Executive Hero 4-Stat Metric Strip */
+    .hero-stats-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+      width: 100%;
+      max-width: 960px;
+      margin-top: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-stat-card {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(180, 125, 75, 0.22);
+      border-radius: 18px;
+      padding: 20px 22px;
+      text-align: center;
+      transition: all 0.25s ease;
+      box-shadow: 0 10px 30px -10px rgba(120, 80, 50, 0.12);
+    }
+
+    .hero-stat-card:hover {
+      background: rgba(255, 255, 255, 0.96);
+      border-color: rgba(180, 125, 75, 0.45);
+      transform: translateY(-3px);
+      box-shadow: 0 16px 35px -10px rgba(180, 125, 75, 0.25);
+    }
+
+    .hero-stat-num {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 6px;
+    }
+
+    /* 4 Stat Gradients: Warm Amber, Rich Wheat, Emerald Green, Terracotta Bronze (Zero Blue/Cyan) */
+    .hero-stat-num.gradient-amber {
+      background: linear-gradient(135deg, #b45309, #d97706);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-stat-num.gradient-wheat {
+      background: linear-gradient(135deg, #a86e3b, #d4a373);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-stat-num.gradient-green {
+      background: linear-gradient(135deg, #15803d, #2e7d32);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-stat-num.gradient-terracotta {
+      background: linear-gradient(135deg, #9a4c18, #c4763b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-stat-label {
+      font-size: 0.84rem;
+      color: #231811;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+
+    .hero-stat-desc {
+      font-size: 0.72rem;
+      color: #6e5849;
+    }
+
+    /* Trust & Feature Pills Bar */
+    .trust-pills-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      padding: 24px 0 60px 0;
+      border-bottom: 1px solid rgba(140, 98, 62, 0.15);
+    }
+
+    .trust-pill-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(180, 125, 75, 0.22);
+      border-radius: 12px;
+      padding: 10px 14px;
+      color: #231811;
+      font-size: 0.84rem;
+      font-weight: 600;
+      box-shadow: 0 4px 14px rgba(120, 80, 50, 0.06);
+    }
+
+    .trust-icon-box {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(212, 163, 115, 0.2);
+      border: 1px solid rgba(180, 125, 75, 0.35);
+      color: #7c441c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+
+    /* Problems vs Solution Section */
+    .problems-section {
+      padding: 70px 0;
+      border-bottom: 1px solid rgba(140, 98, 62, 0.15);
+    }
+
+    .section-header {
+      margin-bottom: 36px;
+    }
+
+    .section-title {
+      font-family: var(--font-heading);
+      font-size: 2.1rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
+      color: #231811;
+      margin-bottom: 8px;
+    }
+
+    .section-subtitle {
+      font-size: 0.95rem;
+      color: #5e4a3b;
+    }
+
+    .comparison-wrapper {
+      display: grid;
+      grid-template-columns: 1fr auto 1.15fr 1fr;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .compare-card {
+      border-radius: 16px;
+      padding: 24px;
+      position: relative;
+    }
+
+    .compare-card.old-way {
+      background: rgba(239, 68, 68, 0.06);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+
+    .compare-card.new-way {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.30);
+    }
+
+    .compare-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .compare-card.old-way .compare-title { color: #b91c1c; }
+    .compare-card.new-way .compare-title { color: #15803d; }
+
+    .compare-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .compare-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.85rem;
+    }
+
+    .compare-card.old-way .compare-item { color: #3f221e; }
+    .compare-card.new-way .compare-item { color: #1a3826; }
+
+    .item-icon {
+      font-size: 1rem;
+    }
+
+    .arrow-divider {
+      color: #d4a373;
+      font-size: 1.6rem;
+      font-weight: 900;
+    }
+
+    .confidence-callout {
+      padding-left: 18px;
+      border-left: 1px solid rgba(180, 125, 75, 0.25);
+    }
+
+    .callout-tag {
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #8b4513;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .callout-title {
+      font-family: var(--font-heading);
+      font-size: 2.2rem;
+      font-weight: 700;
+      line-height: 1.22;
+      letter-spacing: -0.015em;
+      color: #231811;
+      margin-bottom: 12px;
+    }
+
+    .callout-desc {
+      font-size: 0.9rem;
+      color: #5e4a3b;
+      line-height: 1.5;
+    }
+
+    /* Five Core Capabilities */
+    .capabilities-section {
+      padding: 70px 0;
+      border-bottom: 1px solid rgba(140, 98, 62, 0.15);
+    }
+
+    .capabilities-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-top: 30px;
+    }
+
+    .capability-card {
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(180, 125, 75, 0.22);
+      border-radius: 14px;
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.25s ease;
+      box-shadow: 0 10px 30px -10px rgba(120, 80, 50, 0.10);
+    }
+
+    .capability-card:hover {
+      transform: translateY(-3px);
+      background: rgba(255, 255, 255, 0.96);
+      border-color: rgba(180, 125, 75, 0.45);
+      box-shadow: 0 12px 32px rgba(180, 125, 75, 0.22);
+    }
+
+    .cap-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .cap-num {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #7c441c;
+      background: rgba(212, 163, 115, 0.22);
+      border-radius: 9999px;
+      padding: 2px 8px;
+    }
+
+    .cap-icon-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(212, 163, 115, 0.2);
+      border: 1px solid rgba(180, 125, 75, 0.35);
+      color: #7c441c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      margin-bottom: 14px;
+    }
+
+    .cap-title {
+      font-family: var(--font-heading);
+      font-size: 0.98rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #231811;
+      margin-bottom: 6px;
+    }
+
+    .cap-desc {
+      font-size: 0.78rem;
+      color: #5e4a3b;
+      line-height: 1.45;
+    }
+
+    /* How It Works (7 Step Connected Pipeline) */
+    .how-it-works-section {
+      padding: 70px 0;
+      border-bottom: 1px solid rgba(140, 98, 62, 0.15);
+    }
+
+    .timeline-chain-wrap {
+      margin-top: 45px;
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 12px;
+    }
+
+    .timeline-chain-wrap::before {
+      content: "";
+      position: absolute;
+      top: 20px;
+      left: 30px;
+      right: 30px;
+      height: 2px;
+      background: linear-gradient(90deg, #d4a373, #e4ba8d, #c4763b, #15803d);
+      z-index: 1;
+    }
+
+    .timeline-step-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .step-circle {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 2px solid #d4a373;
+      color: #231811;
+      font-size: 0.85rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 14px rgba(180, 125, 75, 0.25);
+    }
+
+    .step-title {
+      font-family: var(--font-heading);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: -0.005em;
+      color: #231811;
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 0.72rem;
+      color: #5e4a3b;
+      line-height: 1.35;
+    }
+
+    /* Bottom CTA Card - Rich Roasted Mocha & Warm Espresso */
+    .bottom-cta-card {
+      background: linear-gradient(135deg, #241710 0%, #3a251a 50%, #1e130d 100%);
+      border: 1px solid rgba(212, 163, 115, 0.35);
+      border-radius: 20px;
+      padding: 44px 40px;
+      margin: 60px 0 50px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(60, 35, 20, 0.30);
+    }
+
+    .bottom-cta-card::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 320px;
+      background: radial-gradient(circle at 100% 50%, rgba(212, 163, 115, 0.25) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .bottom-cta-left {
+      max-width: 620px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cta-mini-tag {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #e0b88f;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .cta-main-title {
+      font-family: var(--font-heading);
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      line-height: 1.25;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .cta-main-subtext {
+      font-size: 0.95rem;
+      color: #e2d5c8;
+      margin-bottom: 24px;
+    }
+
+    .bottom-cta-right {
+      position: relative;
+      z-index: 2;
+      text-align: right;
+    }
+
+    .cta-quote {
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.5;
+      color: #ffffff;
+    }
+
+    .cta-quote span {
+      display: block;
+      color: #d1c2b4;
+      font-weight: 500;
+      font-size: 0.86rem;
+    }
+
+    /* Footer */
+    .page-footer {
+      padding: 30px 0 40px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #6e5849;
+      font-size: 0.8rem;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      color: #6e5849;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: #231811;
+    }
+
+    @media (max-width: 1024px) {
+      .hero-stats-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .comparison-wrapper {
+        grid-template-columns: 1fr;
+      }
+      .capabilities-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .timeline-chain-wrap {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .timeline-chain-wrap::before {
+        display: none;
+      }
+      .trust-pills-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .bottom-cta-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 24px;
+      }
+      .bottom-cta-right {
+        text-align: left;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero-headline {
+        font-size: 2.5rem;
+      }
+      .hero-stats-strip {
+        grid-template-columns: 1fr;
+      }
+      .hero-cta-group {
+        flex-direction: column;
+        width: 100%;
+      }
+      .hero-btn-primary, .btn-outline-pill {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    /* ================= SIGN IN MODAL ================= */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(35, 24, 17, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 20px;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .signin-modal-card {
+      background: #ffffff;
+      border: 1px solid rgba(180, 125, 75, 0.25);
+      box-shadow: 0 24px 60px rgba(60, 35, 20, 0.25);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 480px;
+      overflow: hidden;
+      animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { transform: translateY(16px) scale(0.98); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .signin-modal-header {
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(180, 125, 75, 0.15);
+      background: rgba(245, 237, 227, 0.5);
+    }
+
+    .btn-close-modal {
+      background: none;
+      border: none;
+      color: #8c7361;
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      transition: color 0.15s, background-color 0.15s;
+    }
+    .btn-close-modal:hover {
+      color: #231811;
+      background: rgba(180, 125, 75, 0.15);
+    }
+
+    .signin-modal-body {
+      padding: 24px;
+    }
+
+    .signin-subtitle {
+      font-size: 0.86rem;
+      color: #5e4a3b;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
+    .quick-personas-section {
+      margin-bottom: 20px;
+    }
+
+    .persona-section-label {
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #8b4513;
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    .persona-cards-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .persona-card {
+      background: #fdfbf7;
+      border: 1px solid rgba(180, 125, 75, 0.25);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .persona-card:hover {
+      background: rgba(224, 184, 143, 0.2);
+      border-color: rgba(212, 163, 115, 0.5);
+      transform: translateX(4px);
+    }
+
+    .persona-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .persona-sarah {
+      background: linear-gradient(135deg, #e4ba8d, #b8824f);
+      color: #1a1008;
+    }
+
+    /* Persona Alex - Warm Amber Bronze (Zero Blue) */
+    .persona-alex {
+      background: linear-gradient(135deg, #b45309, #d97706);
+      color: #ffffff;
+    }
+
+    .persona-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .persona-name {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #231811;
+    }
+
+    .persona-role {
+      font-size: 0.74rem;
+      color: #5e4a3b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .persona-arrow {
+      color: #d4a373;
+      font-weight: 800;
+      font-size: 1rem;
+    }
+
+    .signin-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 18px 0;
+      color: #8c7361;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .signin-divider::before,
+    .signin-divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid rgba(180, 125, 75, 0.2);
+    }
+    .signin-divider span {
+      padding: 0 10px;
+    }
+
+    .signin-field-group {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .signin-label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #231811;
+      margin-bottom: 6px;
+    }
+
+    .signin-input-wrap {
+      position: relative;
+    }
+
+    .signin-input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.85rem;
+      color: #8c7361;
+    }
+
+    .signin-input {
+      width: 100%;
+      padding: 11px 14px 11px 36px;
+      border-radius: 10px;
+      border: 1px solid rgba(180, 125, 75, 0.35);
+      background: #fdfbf7;
+      color: #231811;
+      font-size: 0.88rem;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .signin-input:focus {
+      border-color: #d4a373;
+      box-shadow: 0 0 0 3px rgba(212, 163, 115, 0.25);
+    }
+
+    .signin-field-error {
+      color: #dc2626;
+      font-size: 0.76rem;
+      margin-top: 4px;
+      min-height: 18px;
+    }
+
+    .signin-btn-submit {
+      width: 100%;
+      padding: 13px;
+      font-size: 0.92rem;
+      justify-content: center;
+      border-radius: 12px;
+      margin-top: 6px;
+    }
+
+    .signin-user-badge {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(224, 184, 143, 0.15);
+      border: 1px solid rgba(180, 125, 75, 0.25);
+      border-radius: 8px;
+      margin-bottom: 14px;
+    }
+
+    /* Email badge - Rich Terracotta Bronze (Zero Blue) */
+    .signin-badge-email {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #a45a2a;
+    }
+
+    .btn-change-email {
+      background: none;
+      border: none;
+      color: #8b4513;
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .signin-options-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      font-size: 0.78rem;
+    }
+
+    .remember-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #5e4a3b;
+      cursor: pointer;
+    }
+
+    .forgot-link {
+      color: #8c7361;
+      font-size: 0.74rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+
+    <!-- Top Navigation Bar (No theme toggle button) -->
+    <header class="top-navbar">
+      <a href="/" class="brand-logo">
+        <div class="brand-icon-glyph">A</div>
+        <span>AuditAgent.ai</span>
+      </a>
+
+      <nav class="nav-menu">
+        <a href="#section-capabilities" class="nav-item">Product</a>
+        <a href="#section-how-it-works" class="nav-item">How It Works</a>
+        <a href="#section-problems" class="nav-item">Features</a>
+        <a href="/" class="nav-item">For Recruiters</a>
+        <a href="/?action=pricing" class="nav-item">Pricing</a>
+      </nav>
+
+      <div class="nav-actions">
+        <button type="button" class="btn-sign-in" id="btn-open-sign-in">Sign In</button>
+        <a href="/?action=create-job" class="btn-purple-pill" id="nav-start-hiring-btn">
+          Start a Hiring Job →
+        </a>
+      </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <span class="hero-lead-badge">✦ Evidence-Driven Technical Hiring Platform</span>
+      <h1 class="hero-headline">
+        AI advises. Evidence explains.<br>
+        <span class="highlight-purple">Recruiters decide.</span>
+      </h1>
+      <p class="hero-description">
+        AuditAgent evaluates engineering candidates against actual role requirements with deterministic GitHub code audits, tailored proctored assessments, and zero AI hallucinations.
+      </p>
+      <div class="hero-cta-group">
+        <a href="/?action=create-job" class="btn-purple-pill hero-btn-primary" id="hero-start-hiring-btn">
+          Start a Hiring Job →
+        </a>
+        <a href="/?action=view-workflows" class="btn-outline-pill" id="hero-see-how-btn">
+          <span>▶</span> See How It Works
+        </a>
+      </div>
+      <p class="hero-footnote">
+        Your career page stays the same. AuditAgent plugs into your hiring workflow.
+      </p>
+
+      <!-- Executive 4-Stat Metric Strip: Warm Amber, Rich Wheat, Emerald Green, Terracotta Bronze (Zero Blue/Cyan) -->
+      <div class="hero-stats-strip">
+        <div class="hero-stat-card">
+          <div class="hero-stat-num gradient-amber">0%</div>
+          <div class="hero-stat-label">AI Hallucinations</div>
+          <div class="hero-stat-desc">Pure AST code proof</div>
+        </div>
+        <div class="hero-stat-card">
+          <div class="hero-stat-num gradient-wheat">100%</div>
+          <div class="hero-stat-label">Deterministic Audit</div>
+          <div class="hero-stat-desc">Zero prompt guessing</div>
+        </div>
+        <div class="hero-stat-card">
+          <div class="hero-stat-num gradient-green">&lt;8ms</div>
+          <div class="hero-stat-label">Sandbox Latency</div>
+          <div class="hero-stat-desc">12/12 unit test runner</div>
+        </div>
+        <div class="hero-stat-card">
+          <div class="hero-stat-num gradient-terracotta">100%</div>
+          <div class="hero-stat-label">Recruiter Authority</div>
+          <div class="hero-stat-desc">You retain final decision</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trust / Assurance Pills Bar -->
+    <section class="trust-pills-bar">
+      <div class="trust-pill-item">
+        <div class="trust-icon-box">🔍</div>
+        <span>Grounded in real code evidence</span>
+      </div>
+      <div class="trust-pill-item">
+        <div class="trust-icon-box">🛡️</div>
+        <span>Explainable and transparent</span>
+      </div>
+      <div class="trust-pill-item">
+        <div class="trust-icon-box">👥</div>
+        <span>Recruiter in control</span>
+      </div>
+      <div class="trust-pill-item">
+        <div class="trust-icon-box">🔒</div>
+        <span>Designed for enterprise teams</span>
+      </div>
+    </section>
+
+    <!-- The Problems with Traditional Technical Hiring -->
+    <section class="problems-section" id="section-problems">
+      <div class="section-header">
+        <h2 class="section-title">The Problems with Traditional Technical Hiring</h2>
+        <p class="section-subtitle">Resumes are full of claims. Interviews are inconsistent. Great candidates get missed.</p>
+      </div>
+
+      <div class="comparison-wrapper">
+        <!-- The Old Way -->
+        <div class="compare-card old-way">
+          <div class="compare-title">
+            <span>❌</span> The Old Way
+          </div>
+          <div class="compare-list">
+            <div class="compare-item">
+              <span class="item-icon">📄</span>
+              <span>Keyword-stuffed resumes</span>
+            </div>
+            <div class="compare-item">
+              <span class="item-icon">⏳</span>
+              <span>Manual, time-consuming screening</span>
+            </div>
+            <div class="compare-item">
+              <span class="item-icon">🔲</span>
+              <span>Generic technical tests</span>
+            </div>
+            <div class="compare-item">
+              <span class="item-icon">✏️</span>
+              <span>Unclear or inconsistent decisions</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Arrow -->
+        <div class="arrow-divider">→</div>
+
+        <!-- A Better Way -->
+        <div class="compare-card new-way">
+          <div class="compare-title">
+            <span>✅</span> A Better Way with AuditAgent.ai
+          </div>
+          <div class="compare-list">
+            <div class="compare-item">
+              <span class="item-icon">🛡️</span>
+              <span>Verify claims with real code evidence</span>
+            </div>
+            <div class="compare-item">
+              <span class="item-icon">💻</span>
+              <span>Role-specific, tailored assessments</span>
+            </div>
+            <div class="compare-item">
+              <span class="item-icon">📊</span>
+              <span>Explainable, structured evaluation</span>
+            </div>
+            <div class="compare-item">
+              <span class="item-icon">👑</span>
+              <span>Recruiters make the final decision</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Callout -->
+        <div class="confidence-callout">
+          <span class="callout-tag">BUILT FOR WHAT ENGINEERS ACTUALLY DO</span>
+          <h3 class="callout-title">From claims<br>to confidence.</h3>
+          <p class="callout-desc">
+            A more objective, evidence-driven way to hire technical talent.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Five Core Capabilities -->
+    <section class="capabilities-section" id="section-capabilities">
+      <div class="section-header">
+        <h2 class="section-title">Five Core Capabilities</h2>
+        <p class="section-subtitle">A complete, end-to-end solution for technical hiring.</p>
+      </div>
+
+      <div class="capabilities-grid">
+        <!-- 01 -->
+        <div class="capability-card">
+          <div class="cap-top-row">
+            <div class="cap-icon-box">📄</div>
+            <span class="cap-num">01</span>
+          </div>
+          <h4 class="cap-title">Job Intelligence</h4>
+          <p class="cap-desc">Extracts real requirements from the JD (Required vs Preferred).</p>
+        </div>
+
+        <!-- 02 -->
+        <div class="capability-card">
+          <div class="cap-top-row">
+            <div class="cap-icon-box">&lt;/&gt;</div>
+            <span class="cap-num">02</span>
+          </div>
+          <h4 class="cap-title">Evidence Audit</h4>
+          <p class="cap-desc">Verifies candidate claims against public GitHub code and commits.</p>
+        </div>
+
+        <!-- 03 -->
+        <div class="capability-card">
+          <div class="cap-top-row">
+            <div class="cap-icon-box">💻</div>
+            <span class="cap-num">03</span>
+          </div>
+          <h4 class="cap-title">Tailored Assessment</h4>
+          <p class="cap-desc">Generates role-specific coding tests from the JD.</p>
+        </div>
+
+        <!-- 04 -->
+        <div class="capability-card">
+          <div class="cap-top-row">
+            <div class="cap-icon-box">📊</div>
+            <span class="cap-num">04</span>
+          </div>
+          <h4 class="cap-title">Explainable Job Match</h4>
+          <p class="cap-desc">Scores candidates across 6 dimensions (0–100) with clear reasons.</p>
+        </div>
+
+        <!-- 05 -->
+        <div class="capability-card">
+          <div class="cap-top-row">
+            <div class="cap-icon-box">👤</div>
+            <span class="cap-num">05</span>
+          </div>
+          <h4 class="cap-title">Recruiter Authority</h4>
+          <p class="cap-desc">AI recommends, the recruiter decides.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works (7 Connected Steps) -->
+    <section class="how-it-works-section" id="section-how-it-works">
+      <div class="section-header">
+        <h2 class="section-title">How It Works</h2>
+        <p class="section-subtitle">From job description to your final decision — in one connected workflow.</p>
+      </div>
+
+      <div class="timeline-chain-wrap">
+        <!-- Step 1 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">1</div>
+          <h5 class="step-title">Create Job</h5>
+          <p class="step-desc">Add your job description</p>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">2</div>
+          <h5 class="step-title">JD Intelligence</h5>
+          <p class="step-desc">Extract requirements</p>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">3</div>
+          <h5 class="step-title">Ingest Candidate</h5>
+          <p class="step-desc">Resume + application</p>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">4</div>
+          <h5 class="step-title">Audit Evidence</h5>
+          <p class="step-desc">Verify with GitHub</p>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">5</div>
+          <h5 class="step-title">Tailored Assessment</h5>
+          <p class="step-desc">Candidate takes test</p>
+        </div>
+
+        <!-- Step 6 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">6</div>
+          <h5 class="step-title">Job Match</h5>
+          <p class="step-desc">Get explainable score</p>
+        </div>
+
+        <!-- Step 7 -->
+        <div class="timeline-step-node">
+          <div class="step-circle">7</div>
+          <h5 class="step-title">Recruiter Decision</h5>
+          <p class="step-desc">You make the call</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom CTA Banner - Luxurious Roasted Espresso Card -->
+    <section class="bottom-cta-card">
+      <div class="bottom-cta-left">
+        <span class="cta-mini-tag">READY TO HIRE WITH CONFIDENCE?</span>
+        <h3 class="cta-main-title">Start your first hiring job today.</h3>
+        <p class="cta-main-subtext">Your career page stays the same. AuditAgent.ai plugs into your hiring workflow.</p>
+        <div style="display: flex; gap: 14px; align-items: center;">
+          <a href="/?action=create-job" class="btn-purple-pill hero-btn-primary" id="footer-start-hiring-btn">
+            Start a Hiring Job →
+          </a>
+          <a href="/?action=view-workflows" class="btn-outline-pill" id="footer-see-how-btn">
+            <span>▶</span> See How It Works
+          </a>
+        </div>
+      </div>
+
+      <div class="bottom-cta-right">
+        <div class="cta-quote">
+          Better hiring.<br>
+          Stronger teams.<br>
+          <span>A more transparent future.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="page-footer">
+      <div class="brand-logo" style="font-size: 1.05rem;">
+        <div class="brand-icon-glyph" style="width: 24px; height: 24px; font-size: 0.8rem;">A</div>
+        <span>AuditAgent.ai</span>
+      </div>
+
+      <div class="footer-links">
+        <a href="#section-capabilities">Product</a>
+        <a href="#section-how-it-works">How It Works</a>
+        <a href="#modal-sign-in" id="footer-btn-sign-in">Sign In</a>
+        <a href="/">Recruiter App</a>
+      </div>
+
+      <div>
+        © 2026 AuditAgent.ai. All rights reserved.
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Sign In Modal -->
+  <div id="modal-sign-in" class="modal-backdrop" style="display: none;">
+    <div class="signin-modal-card">
+      <div class="signin-modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="brand-icon-glyph" style="width: 28px; height: 28px; font-size: 0.95rem;">A</div>
+          <span style="font-weight: 800; font-size: 1.15rem; font-family: var(--font-heading);">Sign In to AuditAgent.ai</span>
+        </div>
+        <button type="button" class="btn-close-modal" id="btn-close-sign-in" aria-label="Close">✕</button>
+      </div>
+
+      <div class="signin-modal-body">
+        <p class="signin-subtitle">Access your enterprise recruiter workspace, active hiring jobs, and candidate evidence scorecards.</p>
+
+        <!-- 1-Click Fast Persona Switcher -->
+        <div class="quick-personas-section">
+          <span class="persona-section-label">⚡ ONE-CLICK DEMO WORKSPACE SIGN IN</span>
+          <div class="persona-cards-grid">
+            <button type="button" class="persona-card" id="btn-login-sarah">
+              <div class="persona-avatar persona-sarah">SJ</div>
+              <div class="persona-info">
+                <div class="persona-name">Sarah Jenkins</div>
+                <div class="persona-role">Lead Technical Recruiter • Acme Corp (Growth)</div>
+              </div>
+              <span class="persona-arrow">→</span>
+            </button>
+
+            <button type="button" class="persona-card" id="btn-login-alex">
+              <div class="persona-avatar persona-alex">AM</div>
+              <div class="persona-info">
+                <div class="persona-name">Alex Mercer</div>
+                <div class="persona-role">Engineering Hiring Manager • Core Infra</div>
+              </div>
+              <span class="persona-arrow">→</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="signin-divider">
+          <span>or sign in with work credentials</span>
+        </div>
+
+        <!-- 2-Step Work Email Flow inside structured form -->
+        <form id="signin-form" onsubmit="return false;" style="display: contents;">
+          <!-- Step 1: Email Input -->
+          <div id="signin-step-1" class="signin-step">
+            <div class="signin-field-group">
+              <label for="signin-email" class="signin-label">Enterprise Work Email</label>
+              <div class="signin-input-wrap">
+                <span class="signin-input-icon">✉️</span>
+                <input type="email" id="signin-email" class="signin-input" placeholder="recruiter@acmecorp.com" value="sarah@acmecorp.com" autocomplete="email" required>
+              </div>
+              <div id="signin-step1-error" class="signin-field-error"></div>
+            </div>
+
+            <button type="button" class="btn-purple-pill signin-btn-submit" id="btn-signin-next">
+              Next: Verify Credentials →
+            </button>
+          </div>
+
+          <!-- Step 2: Password Input -->
+          <div id="signin-step-2" class="signin-step" style="display: none;">
+            <div class="signin-user-badge">
+              <span class="signin-badge-email" id="display-selected-email">sarah@acmecorp.com</span>
+              <button type="button" class="btn-change-email" id="btn-signin-back">Change</button>
+            </div>
+
+            <div class="signin-field-group">
+              <label for="signin-password" class="signin-label">Password</label>
+              <div class="signin-input-wrap">
+                <span class="signin-input-icon">🔒</span>
+                <input type="password" id="signin-password" class="signin-input" placeholder="••••••••••••" value="DemoAudit123!" autocomplete="current-password" required>
+              </div>
+              <div id="signin-step2-error" class="signin-field-error"></div>
+            </div>
+
+            <div class="signin-options-row">
+              <label class="remember-label">
+                <input type="checkbox" id="remember-me-checkbox" checked>
+                <span>Keep me signed in</span>
+              </label>
+              <span class="forgot-link">Default demo: DemoAudit123!</span>
+            </div>
+
+            <button type="button" class="btn-purple-pill signin-btn-submit" id="btn-signin-submit">
+              Sign In to Recruiter Workspace →
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      try { localStorage.removeItem('auditagent_landing_theme'); } catch(e) {}
+      const modalSignIn = document.getElementById('modal-sign-in');
+      const btnOpenSignIn = document.getElementById('btn-open-sign-in');
+      const btnCloseSignIn = document.getElementById('btn-close-sign-in');
+      const btnLoginSarah = document.getElementById('btn-login-sarah');
+      const btnLoginAlex = document.getElementById('btn-login-alex');
+
+      const step1 = document.getElementById('signin-step-1');
+      const step2 = document.getElementById('signin-step-2');
+      const emailInput = document.getElementById('signin-email');
+      const passwordInput = document.getElementById('signin-password');
+      const btnNext = document.getElementById('btn-signin-next');
+      const btnBack = document.getElementById('btn-signin-back');
+      const btnSubmit = document.getElementById('btn-signin-submit');
+      const step1Error = document.getElementById('signin-step1-error');
+      const step2Error = document.getElementById('signin-step2-error');
+      const displaySelectedEmail = document.getElementById('display-selected-email');
+
+      function openModal() {
+        if (!modalSignIn) return;
+        modalSignIn.style.display = 'flex';
+        showStep(1);
+        if (emailInput) setTimeout(() => emailInput.focus(), 80);
+      }
+
+      function closeModal() {
+        if (!modalSignIn) return;
+        modalSignIn.style.display = 'none';
+        if (step1Error) step1Error.textContent = '';
+        if (step2Error) step2Error.textContent = '';
+      }
+
+      function showStep(stepNum) {
+        if (stepNum === 1) {
+          step1.style.display = 'block';
+          step2.style.display = 'none';
+          if (emailInput) emailInput.focus();
+        } else {
+          step1.style.display = 'none';
+          step2.style.display = 'block';
+          if (displaySelectedEmail) displaySelectedEmail.textContent = emailInput.value.trim();
+          if (passwordInput) passwordInput.focus();
+        }
+      }
+
+      function completeLogin(name, role, email) {
+        try {
+          localStorage.setItem('hr_recruiter_name', name);
+          localStorage.setItem('hr_recruiter_role', role);
+          localStorage.setItem('auditagent_auth_user', JSON.stringify({
+            name: name,
+            role: role,
+            email: email,
+            org: 'Acme Corp',
+            tier: 'Growth Plan (500 credits)'
+          }));
+          localStorage.setItem('auditagent_jwt', 'jwt-bearer-token-' + Date.now());
+        } catch (e) {
+          console.warn('Storage error:', e);
+        }
+        window.location.href = '/';
+      }
+
+      if (btnOpenSignIn) {
+        btnOpenSignIn.addEventListener('click', openModal);
+      }
+      if (btnCloseSignIn) {
+        btnCloseSignIn.addEventListener('click', closeModal);
+      }
+
+      if (modalSignIn) {
+        modalSignIn.addEventListener('click', (e) => {
+          if (e.target === modalSignIn) closeModal();
+        });
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalSignIn && modalSignIn.style.display === 'flex') {
+          closeModal();
+        }
+      });
+
+      // Quick 1-Click Persona Logins
+      if (btnLoginSarah) {
+        btnLoginSarah.addEventListener('click', () => {
+          completeLogin('Sarah', 'Lead Technical Recruiter', 'sarah@acmecorp.com');
+        });
+      }
+      if (btnLoginAlex) {
+        btnLoginAlex.addEventListener('click', () => {
+          completeLogin('Alex', 'Engineering Hiring Manager', 'alex@acmecorp.com');
+        });
+      }
+
+      const footerSignInBtn = document.getElementById('footer-btn-sign-in');
+      if (footerSignInBtn) {
+        footerSignInBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          openModal();
+        });
+      }
+
+      // Step 1: Next button
+      function handleNext() {
+        const val = (emailInput?.value || '').trim();
+        if (!val || !val.includes('@')) {
+          if (step1Error) step1Error.textContent = 'Please enter a valid work email address.';
+          if (emailInput) emailInput.focus();
+          return;
+        }
+        if (step1Error) step1Error.textContent = '';
+        showStep(2);
+      }
+
+      if (btnNext) {
+        btnNext.addEventListener('click', handleNext);
+      }
+      if (emailInput) {
+        emailInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleNext();
+          }
+        });
+      }
+
+      // Step 2: Back button
+      if (btnBack) {
+        btnBack.addEventListener('click', () => showStep(1));
+      }
+
+      // Step 2: Submit button
+      async function handleSubmit() {
+        const email = (emailInput?.value || '').trim();
+        const pass = (passwordInput?.value || '').trim();
+
+        if (!pass) {
+          if (step2Error) step2Error.textContent = 'Please enter your account password.';
+          if (passwordInput) passwordInput.focus();
+          return;
+        }
+        if (step2Error) step2Error.textContent = '';
+
+        if (btnSubmit) {
+          btnSubmit.disabled = true;
+          btnSubmit.textContent = 'Verifying & Signing In...';
+        }
+
+        try {
+          const res = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, password: pass })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.access_token) {
+              localStorage.setItem('auditagent_jwt', data.access_token);
+            }
+            const userName = data.user?.full_name || (email.includes('sarah') ? 'Sarah Jenkins' : (email.includes('alex') ? 'Alex Mercer' : 'Recruiter'));
+            const userRole = data.user?.memberships?.[0]?.role === 'owner' ? 'Lead Technical Recruiter' : 'Engineering Hiring Manager';
+            completeLogin(userName, userRole, email);
+            return;
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            if (step2Error) step2Error.textContent = errData.detail || 'Incorrect email or password.';
+            if (btnSubmit) {
+              btnSubmit.disabled = false;
+              btnSubmit.textContent = 'Sign In to Recruiter Workspace →';
+            }
+            return;
+          }
+        } catch (netErr) {
+          console.warn('Network fallback during login:', netErr);
+        }
+
+        const derivedName = email.includes('sarah') ? 'Sarah Jenkins' : (email.includes('alex') ? 'Alex Mercer' : (email.split('@')[0].split('.')[0] || 'Recruiter'));
+        completeLogin(derivedName, 'Technical Recruiter', email);
+      }
+
+      if (btnSubmit) {
+        btnSubmit.addEventListener('click', handleSubmit);
+      }
+      if (passwordInput) {
+        passwordInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSubmit();
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

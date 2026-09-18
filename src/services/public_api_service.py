@@ -13,12 +13,62 @@ import os
 import hmac
 import math
 import time
+import socket
 import hashlib
 import logging
-from typing import Dict, Any, List, Optional
+import ipaddress
+import urllib.parse
+from typing import Dict, Any, List, Optional, Tuple
 import httpx
 
 logger = logging.getLogger("auditagent.public_api")
+
+def is_safe_external_url(url: str) -> Tuple[bool, str]:
+    """
+    Validates that a webhook or external endpoint does not target
+    loopback, private RFC-1918 subnets, cloud metadata services, or non-HTTP protocols.
+    Prevents Server-Side Request Forgery (SSRF - OWASP A10).
+    """
+    if not url or not isinstance(url, str):
+        return False, "URL is empty"
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+    except Exception as e:
+        return False, f"Malformed URL: {e}"
+
+    if parsed.scheme not in ("http", "https"):
+        return False, f"Unsupported scheme '{parsed.scheme}': only HTTP/HTTPS allowed."
+
+    hostname = (parsed.hostname or "").lower().strip()
+    if not hostname:
+        return False, "URL missing valid hostname."
+
+    FORBIDDEN_HOSTS = {
+        "localhost", "127.0.0.1", "::1", "0.0.0.0",
+        "metadata.google.internal", "169.254.169.254",
+        "instance-data"
+    }
+    if hostname in FORBIDDEN_HOSTS or hostname.endswith(".internal"):
+        return False, f"Access to restricted host '{hostname}' is blocked."
+
+    # Resolve IP address to check against private/loopback/link-local ranges
+    try:
+        ip_str = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_str)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or str(ip).startswith("169.254.")
+        ):
+            return False, f"Resolved IP {ip_str} belongs to private or restricted network range."
+    except Exception:
+        # If hostname cannot be resolved locally, allow if format is valid domain
+        pass
+
+    return True, "OK"
 
 class PublicApiService:
 
@@ -271,6 +321,16 @@ class PublicApiService:
         status_code = 200
 
         if webhook_url and webhook_url.startswith("http"):
+            is_safe, reason = is_safe_external_url(webhook_url)
+            if not is_safe:
+                logger.warning(f"SSRF protection blocked webhook dispatch to {webhook_url}: {reason}")
+                return {
+                    "delivered": False,
+                    "status_code": 403,
+                    "channel": channel_type,
+                    "candidate": candidate_name,
+                    "error": f"Restricted destination URL: {reason}"
+                }
             try:
                 async with httpx.AsyncClient(timeout=3.0) as client:
                     resp = await client.post(webhook_url, json=payload)
