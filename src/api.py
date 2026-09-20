@@ -109,6 +109,28 @@ app.include_router(integrations_router)
 tasks_db: Dict[str, Dict[str, Any]] = {}
 DEFAULT_DEMO_SCREENINGS: List[Dict[str, Any]] = [
     {
+        "id": "baji-001",
+        "audit_id": "baji-001",
+        "candidate_name": "Baddela Baji",
+        "github_username": "Bajiyadav",
+        "overall_score": 69,
+        "recommendation": "REVIEW",
+        "status_label": "Review",
+        "recruiter_recommendation": "REVIEW",
+        "ai_recommendation": "REVIEW",
+        "recruiter_decision": "REVIEW",
+        "skills_match_score": 75,
+        "code_quality_score": 72,
+        "consistency_score": 60,
+        "confidence_level": "HIGH",
+        "executive_summary": "Candidate Baddela Baji demonstrates verified GitHub repositories in Python and Web systems. Verified repository: Bajiyadav. Recommendation: REVIEW.",
+        "is_valid_resume": True,
+        "document_type": "RESUME",
+        "next_action": "REVIEW_RECOMMENDED",
+        "next_action_label": "Recruiter review recommended",
+        "screened_at": "Today 11:00"
+    },
+    {
         "id": "demo-001",
         "audit_id": "demo-001",
         "candidate_name": "Aarav Sharma",
@@ -619,6 +641,15 @@ async def _process_screening_task(
             "result": result_payload,
             "created_at": time.time()
         }
+        # Prevent duplicate entries for the same candidate
+        new_cand_name = (result_payload.get("candidate_name") or "").strip().lower()
+        new_gh = (result_payload.get("github_username") or "").strip().lower()
+        global history_db
+        history_db = [
+            h for h in history_db
+            if (h.get("candidate_name") or "").strip().lower() != new_cand_name
+            or (new_gh and (h.get("github_username") or "").strip().lower() != new_gh)
+        ]
         history_db.insert(0, result_payload)
 
         # Webhook callback if requested
@@ -1078,24 +1109,95 @@ async def list_recent_screenings(
         elif fs in ("INVALID", "INVALID_DOCUMENT"):
             items = [it for it in items if not it.get("is_valid_resume", True) or it.get("overall_score", 0) == 0]
 
+    # Ensure absolute deduplication: each candidate only appears once (keeping latest evaluation)
+    seen_candidates = set()
+    deduped_items = []
+    for it in items:
+        cand_key = (it.get("candidate_name") or it.get("github_username") or "").strip().lower()
+        if cand_key and cand_key in seen_candidates:
+            continue
+        if cand_key:
+            seen_candidates.add(cand_key)
+        deduped_items.append(it)
+    items = deduped_items
+
+    if not items and not q and (not filter_status or filter_status.upper() == "ALL"):
+        items = list(DEFAULT_DEMO_SCREENINGS)[:limit]
+
     return items
 
-@app.delete("/api/v1/screenings")
-async def clear_recent_screenings(
+@app.delete("/api/v1/screenings/{screening_id}")
+async def delete_single_screening(
+    screening_id: str,
     tenant: TenantContext = Depends(get_tenant_or_demo_context),
     db: AsyncSession = Depends(get_db)
 ):
-    """Purges recent candidate evaluations for the active tenant organization to reset workspace state."""
+    """Deletes a specific candidate screening evaluation record from the database and history."""
     from .db.models import Audit
     from sqlalchemy import delete
+    import uuid
+
+    deleted_from_db = False
+    try:
+        audit_uuid = uuid.UUID(screening_id)
+        stmt = delete(Audit).where(Audit.id == audit_uuid)
+        res = await db.execute(stmt)
+        await db.commit()
+        if res.rowcount and res.rowcount > 0:
+            deleted_from_db = True
+    except Exception as e:
+        logger.debug(f"Not a UUID or DB delete error ({e})")
+
+    global history_db
+    initial_len = len(history_db)
+    history_db = [
+        item for item in history_db
+        if str(item.get("id")) != screening_id
+        and str(item.get("audit_id")) != screening_id
+        and str(item.get("task_id")) != screening_id
+    ]
+    deleted_from_memory = len(history_db) < initial_len
+
+    return {
+        "success": True,
+        "deleted_id": screening_id,
+        "deleted_from_db": deleted_from_db,
+        "deleted_from_memory": deleted_from_memory
+    }
+
+@app.delete("/api/v1/screenings")
+async def clear_recent_screenings(
+    duplicates_only: bool = False,
+    tenant: TenantContext = Depends(get_tenant_or_demo_context),
+    db: AsyncSession = Depends(get_db)
+):
+    """Purges recent candidate evaluations or deduplicates workspace evaluations."""
+    from .db.models import Audit, Candidate
+    from sqlalchemy import delete, select
+
+    global history_db
+
+    if duplicates_only:
+        # Deduplicate history_db
+        seen = set()
+        deduped = []
+        for item in history_db:
+            k = (item.get("candidate_name") or item.get("github_username") or "").strip().lower()
+            if k and k in seen:
+                continue
+            if k:
+                seen.add(k)
+            deduped.append(item)
+        history_db = deduped
+        return {"message": "Duplicates removed successfully", "status": "deduplicated"}
+
     try:
         stmt = delete(Audit).where(Audit.organization_id == tenant.organization_id)
         await db.execute(stmt)
         await db.commit()
     except Exception as e:
         logger.warning(f"Database delete warning in clear_recent_screenings: {e}")
-    global history_db
-    history_db.clear()
+    history_db = list(DEFAULT_DEMO_SCREENINGS)
     return {"message": "Screening history cleared successfully", "status": "cleared"}
 
 @app.get("/api/v1/health")

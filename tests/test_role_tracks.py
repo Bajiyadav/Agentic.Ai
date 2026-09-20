@@ -43,8 +43,8 @@ from src.services.assessment_service import (
 from src.services.sandbox_service import SandboxService
 
 
-def test_exam_tracks_20_roles_structure():
-    """Verify that all 20 exam tracks exist with 5 questions per role covering the 5 challenge types."""
+def test_exam_tracks_30_roles_structure():
+    """Verify that all 30 exam tracks exist with 5 questions per role covering the 5 challenge types."""
     expected_roles = [
         "software_engineer",
         "data_engineer",
@@ -66,8 +66,18 @@ def test_exam_tracks_20_roles_structure():
         "data_scientist",
         "api_integrations_engineer",
         "game_developer",
+        "site_reliability_engineer",
+        "cybersecurity_analyst",
+        "network_engineer",
+        "aiops_mlops_engineer",
+        "big_data_architect",
+        "crm_enterprise_developer",
+        "ar_vr_engineer",
+        "fintech_quant_developer",
+        "bioinformatics_engineer",
+        "robotics_autonomous_engineer",
     ]
-    assert len(EXAM_TRACKS) == 20
+    assert len(EXAM_TRACKS) == 30
     assert set(EXAM_TRACKS.keys()) == set(expected_roles)
 
     for role_id, track in EXAM_TRACKS.items():

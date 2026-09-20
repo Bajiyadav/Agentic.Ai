@@ -44,18 +44,14 @@ async def run_verification():
         await page.goto("http://localhost:8000", wait_until="domcontentloaded")
         await asyncio.sleep(1.5)
 
+        # Switch to Evidence Audit view
+        await page.click("#tab-single-btn")
+        await asyncio.sleep(0.8)
+
         # Ensure active job context banner is visible
         print("[2] Checking active job context...", flush=True)
         job_banner = page.locator("#active-job-context-banner")
-        if not await job_banner.is_visible():
-            await page.click("#tab-jobs-btn")
-            await asyncio.sleep(0.8)
-            first_job_card = page.locator(".job-opening-card").first
-            if await first_job_card.is_visible():
-                await first_job_card.click()
-                await asyncio.sleep(0.8)
-            await page.click("#tab-single-btn")
-            await asyncio.sleep(0.8)
+        await job_banner.wait_for(state="visible", timeout=10000)
 
         # Upload candidate resume
         print("[3] Uploading candidate resume PDF...", flush=True)

@@ -1,4 +1,5 @@
 import io
+import html
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -367,3 +368,304 @@ class ExecutiveScorecardPdfService:
         doc.build(story)
         buffer.seek(0)
         return buffer.getvalue()
+
+    @classmethod
+    def generate_assessment_audit_pdf(cls, audit: Dict[str, Any]) -> bytes:
+        """
+        Builds a comprehensive, executive-grade PDF assessment and proctoring dossier
+        detailing candidate code submissions, test cases, and anti-cheat event timeline.
+        """
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=36,
+            leftMargin=36,
+            topMargin=36,
+            bottomMargin=36
+        )
+
+        styles = getSampleStyleSheet()
+
+        c_brand_dark = colors.HexColor("#0f172a")    # Slate 900
+        c_brand_blue = colors.HexColor("#1e3a8a")    # Blue 900
+        c_brand_sub = colors.HexColor("#475569")     # Slate 600
+        c_border = colors.HexColor("#cbd5e1")        # Slate 300
+        c_green = colors.HexColor("#059669")         # Emerald 600
+        c_red = colors.HexColor("#dc2626")           # Red 600
+        c_code_bg = colors.HexColor("#f8fafc")       # Slate 50
+
+        header_title_style = ParagraphStyle(
+            'AuditHeaderTitle',
+            parent=styles['Heading1'],
+            fontSize=15,
+            leading=18,
+            textColor=c_brand_dark,
+            spaceAfter=2
+        )
+        header_sub_style = ParagraphStyle(
+            'AuditHeaderSub',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=10,
+            textColor=c_brand_sub,
+            spaceAfter=8
+        )
+        section_title_style = ParagraphStyle(
+            'AuditSectionTitle',
+            parent=styles['Heading2'],
+            fontSize=10.5,
+            leading=13,
+            textColor=c_brand_blue,
+            spaceBefore=6,
+            spaceAfter=3
+        )
+        body_style = ParagraphStyle(
+            'AuditBody',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=11,
+            textColor=c_brand_dark
+        )
+        body_bold_style = ParagraphStyle(
+            'AuditBodyBold',
+            parent=styles['Normal'],
+            fontSize=8,
+            leading=11,
+            fontName="Helvetica-Bold",
+            textColor=c_brand_dark
+        )
+        body_small_style = ParagraphStyle(
+            'AuditBodySmall',
+            parent=styles['Normal'],
+            fontSize=7,
+            leading=9.5,
+            textColor=c_brand_sub
+        )
+        code_snippet_style = ParagraphStyle(
+            'AuditCodeSnippet',
+            parent=styles['Code'],
+            fontSize=7,
+            leading=8.5,
+            fontName="Courier",
+            textColor=colors.HexColor("#0f172a")
+        )
+
+        story = []
+
+        cand_name = audit.get("candidate_name") or "Candidate"
+        cand_email = audit.get("candidate_email") or "Not provided"
+        job_title = audit.get("job_title") or "Technical Position"
+        ass_title = audit.get("assessment_title") or "Technical Assessment"
+        completed_at = audit.get("completed_at") or audit.get("created_at") or "Recently Completed"
+        score = audit.get("technical_score") if audit.get("technical_score") is not None else 0
+        integrity = audit.get("integrity_score") if audit.get("integrity_score") is not None else 100
+        strikes = audit.get("strike_count") or 0
+        max_strikes = audit.get("max_strikes") or 3
+        is_disqualified = audit.get("is_disqualified") or audit.get("status") == "integrity_disqualified"
+        duration_mins = audit.get("duration_minutes") or 30
+
+        # Status determination
+        if is_disqualified:
+            status_text = "DISQUALIFIED (3-STRIKE CHEAT)"
+            status_color = c_red
+        elif score >= 70 and integrity >= 85:
+            status_text = "PASSED / RECOMMENDED"
+            status_color = c_green
+        else:
+            status_text = "NEEDS TECHNICAL REVIEW"
+            status_color = colors.HexColor("#d97706")
+
+        # 1. Header Banner
+        header_table = Table([
+            [
+                Paragraph("<b>AuditAgent.ai</b> &mdash; Technical Assessment & Proctoring Dossier", header_title_style),
+                Paragraph(f"<b>Status:</b> <font color='{status_color.hexval()}'>{status_text}</font>", ParagraphStyle('StatR', parent=body_bold_style, alignment=2))
+            ],
+            [
+                Paragraph(f"<b>Candidate:</b> {cand_name} ({cand_email}) &bull; <b>Role:</b> {job_title}", header_sub_style),
+                Paragraph(f"<b>Completed:</b> {completed_at[:19]}", ParagraphStyle('DateR', parent=body_small_style, alignment=2))
+            ]
+        ], colWidths=[360, 180])
+        header_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('PADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 1), (-1, 1), 6),
+        ]))
+        story.append(header_table)
+        story.append(HRFlowable(width="100%", thickness=1, color=c_brand_blue, spaceBefore=2, spaceAfter=6))
+
+        # 2. Key Metrics Summary Grid
+        metrics_data = [
+            [
+                Paragraph("<b>Technical Score</b>", body_small_style),
+                Paragraph("<b>Integrity Rating</b>", body_small_style),
+                Paragraph("<b>Proctoring Strikes</b>", body_small_style),
+                Paragraph("<b>Test Duration</b>", body_small_style)
+            ],
+            [
+                Paragraph(f"<b><font size=14 color='{c_brand_dark.hexval()}'>{score} / 100</font></b>", body_style),
+                Paragraph(f"<b><font size=14 color='{c_green.hexval() if integrity >= 90 else c_red.hexval()}'>{integrity}%</font></b>", body_style),
+                Paragraph(f"<b><font size=14 color='{c_red.hexval() if strikes >= 3 else c_brand_dark.hexval()}'>{strikes} of {max_strikes}</font></b>", body_style),
+                Paragraph(f"<b><font size=14 color='{c_brand_dark.hexval()}'>{duration_mins} mins</font></b>", body_style)
+            ]
+        ]
+        metrics_table = Table(metrics_data, colWidths=[135, 135, 135, 135])
+        metrics_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+            ('GRID', (0, 0), (-1, -1), 0.5, c_border),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ]))
+        story.append(metrics_table)
+        story.append(Spacer(1, 8))
+
+        # 3. AI Evaluation Summary & Strengths
+        story.append(Paragraph("<b>1. AI Evaluation Synthesis & Competencies</b>", section_title_style))
+        feedback = audit.get("feedback") or "Candidate completed proctored assessment."
+        strengths = audit.get("strengths") or []
+        weaknesses = audit.get("weaknesses") or []
+
+        s_html = "<br/>".join([f"&bull; {s}" for s in strengths[:4]]) if strengths else "&bull; Clean submission."
+        w_html = "<br/>".join([f"&bull; {w}" for w in weaknesses[:4]]) if weaknesses else "&bull; No major errors detected."
+
+        eval_summary_table = Table([
+            [Paragraph(f"<b>Executive Summary:</b> {feedback}", body_style)],
+            [
+                Table([
+                    [Paragraph("<b>Demonstrated Strengths</b>", body_bold_style), Paragraph("<b>Identified Growth Areas</b>", body_bold_style)],
+                    [
+                        Paragraph(s_html, ParagraphStyle('SStyle', parent=body_small_style, textColor=colors.HexColor("#065f46"))),
+                        Paragraph(w_html, ParagraphStyle('WStyle', parent=body_small_style, textColor=colors.HexColor("#991b1b")))
+                    ]
+                ], colWidths=[266, 266])
+            ]
+        ], colWidths=[540])
+        eval_summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+            ('GRID', (0, 0), (-1, -1), 0.5, c_border),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(eval_summary_table)
+        story.append(Spacer(1, 8))
+
+        # 4. Technical Question-by-Question Breakdown
+        story.append(Paragraph("<b>2. Technical Challenge & Code Submission Review</b>", section_title_style))
+        questions = audit.get("questions") or []
+        answers = audit.get("answers") or {}
+        sandbox_results = audit.get("sandbox_results") or {}
+
+        if not questions:
+            story.append(Paragraph("<i>No specific question metadata recorded.</i>", body_small_style))
+        else:
+            q_rows = [
+                [
+                    Paragraph("<b>#</b>", body_bold_style),
+                    Paragraph("<b>Challenge & Prompt</b>", body_bold_style),
+                    Paragraph("<b>Modality</b>", body_bold_style),
+                    Paragraph("<b>Candidate Code / Answer Snippet</b>", body_bold_style),
+                    Paragraph("<b>Sandbox Result</b>", body_bold_style)
+                ]
+            ]
+            for idx, q in enumerate(questions[:5], 1):
+                q_id = q.get("id") or str(idx)
+                q_title = html.escape(str(q.get("title") or f"Question {idx}"))
+                q_type = (q.get("type") or "code").upper()
+                raw_desc = q.get("prompt") or q.get("description") or ""
+                q_prompt = html.escape(raw_desc[:120]) + ("..." if len(raw_desc) > 120 else "")
+
+                raw_ans = answers.get(q_id) or answers.get(str(idx)) or "No answer submitted."
+                ans_str = str(raw_ans)
+                clean_ans = html.escape(ans_str[:160].replace("\n", " ")) + ("..." if len(ans_str) > 160 else "")
+
+                # Sandbox stats
+                sb = sandbox_results.get(q_id) or {}
+                if sb and (sb.get("total_tests") or sb.get("tests_total")):
+                    total_t = sb.get("total_tests") or sb.get("tests_total")
+                    res_str = f"{sb.get('tests_passed', 0)}/{total_t} passed"
+                elif q_type == "MCQ":
+                    res_str = "Graded Concept"
+                else:
+                    res_str = "Code Evaluated"
+
+                q_rows.append([
+                    Paragraph(str(idx), body_style),
+                    Paragraph(f"<b>{q_title}</b><br/><font color='#64748b'>{q_prompt}</font>", body_small_style),
+                    Paragraph(q_type, body_small_style),
+                    Paragraph(f"<code>{clean_ans}</code>", code_snippet_style),
+                    Paragraph(f"<b>{res_str}</b>", body_small_style)
+                ])
+
+            q_table = Table(q_rows, colWidths=[20, 160, 60, 210, 90])
+            q_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                ('GRID', (0, 0), (-1, -1), 0.5, c_border),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('PADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(q_table)
+
+        story.append(Spacer(1, 8))
+
+        # 5. Anti-Cheat & Proctoring Event Log
+        story.append(Paragraph("<b>3. Anti-Cheat & Continuous Proctoring Event Log</b>", section_title_style))
+        logs = audit.get("proctoring_logs") or []
+
+        if not logs:
+            clean_log_text = "<b>Clean Proctoring Session:</b> No fullscreen exits, tab switches, background noise, or copy-paste violations occurred during the live assessment."
+            story.append(Paragraph(clean_log_text, ParagraphStyle('CleanLog', parent=body_small_style, textColor=c_green)))
+        else:
+            log_rows = [
+                [
+                    Paragraph("<b>Timestamp</b>", body_bold_style),
+                    Paragraph("<b>Event Type</b>", body_bold_style),
+                    Paragraph("<b>Violation Details</b>", body_bold_style),
+                    Paragraph("<b>Strike Action</b>", body_bold_style)
+                ]
+            ]
+            for entry in logs[:8]:
+                ts = entry.get("timestamp") or "N/A"
+                ev = entry.get("event_type") or entry.get("event") or "event"
+                dt = entry.get("details") or ""
+                if isinstance(dt, dict):
+                    dt_str = ", ".join(f"{k}: {v}" for k, v in dt.items())
+                elif isinstance(dt, str):
+                    dt_str = dt
+                else:
+                    dt_str = str(dt)
+                dt_escaped = html.escape(dt_str[:180])
+                ev_escaped = html.escape(str(ev))
+                sa = "STRIKE +1" if entry.get("strike_added") else "Flagged"
+                sa_color = c_red if entry.get("strike_added") else c_brand_sub
+
+                log_rows.append([
+                    Paragraph(html.escape(ts[-8:] if len(ts) >= 8 else ts), body_small_style),
+                    Paragraph(f"<b>{ev_escaped}</b>", body_small_style),
+                    Paragraph(dt_escaped, body_small_style),
+                    Paragraph(f"<font color='{sa_color.hexval()}'><b>{sa}</b></font>", body_small_style)
+                ])
+
+            log_table = Table(log_rows, colWidths=[70, 110, 270, 90])
+            log_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#fef2f2")),
+                ('GRID', (0, 0), (-1, -1), 0.5, c_border),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('PADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(log_table)
+
+        story.append(Spacer(1, 10))
+
+        # 6. Compliance Notice
+        notice_text = (
+            "<b>LEGAL & COMPLIANCE NOTICE (NYC Local Law 144 / EEOC Title VII / GDPR Art. 22):</b> "
+            "This technical assessment and proctoring dossier is an assistive evaluation grounded strictly in "
+            "automated code execution and anti-cheat telemetry. All final hiring decisions remain under "
+            "human-in-the-loop oversight."
+        )
+        story.append(Paragraph(notice_text, ParagraphStyle('AuditNotice', parent=body_small_style, fontSize=6.5, leading=8.5, textColor=c_brand_sub)))
+
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+

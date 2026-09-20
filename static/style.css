@@ -6239,29 +6239,109 @@ button:active, .tab-btn:active, .chip:active {
 }
 
 /* Lightweight First-time Onboarding */
+/* First-time Recruiter Onboarding Experience */
 .hr-onboarding-card {
-  background: #ffffff;
+  background: var(--color-surface, #ffffff);
   border: 1px solid var(--color-border, #e2e8f0);
   border-left: 4px solid var(--color-primary, #2563eb);
   border-radius: 14px;
   padding: 22px 24px;
   margin-bottom: 24px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
   position: relative;
+  transition: all 0.3s ease;
+}
+
+.onboarding-header-wrap {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-right: 120px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.onboarding-title {
+  font-size: 1.22rem;
+  font-weight: 800;
+  color: var(--color-text, #0f172a);
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onboarding-subtitle {
+  font-size: 0.88rem;
+  color: var(--color-text-muted, #64748b);
+  margin: 0;
+}
+
+.onboarding-progress-wrap {
+  min-width: 200px;
+  text-align: right;
+}
+
+.onboarding-progress-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.onboarding-progress-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-primary, #2563eb);
+}
+
+.onboarding-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--color-surface-hover, #e2e8f0);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.onboarding-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--color-primary, #2563eb), #06b6d4);
+  border-radius: 9999px;
+  transition: width 0.4s ease;
 }
 
 .onboarding-steps-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
-  margin: 16px 0;
+  margin: 16px 0 10px 0;
 }
 
 .onboarding-step-box {
-  background: #f8fafc;
+  background: var(--color-surface-hover, #f8fafc);
   border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 10px;
-  padding: 14px 16px;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.onboarding-step-box.completed {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.onboarding-step-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
 .onboarding-step-num {
@@ -6270,44 +6350,117 @@ button:active, .tab-btn:active, .chip:active {
   color: var(--color-primary, #2563eb);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  background: rgba(37, 99, 235, 0.1);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.onboarding-step-box.completed .onboarding-step-num {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.onboarding-step-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+.onboarding-step-badge.pending {
+  color: var(--color-text-muted, #64748b);
+  background: var(--color-border, #e2e8f0);
+}
+
+.onboarding-step-badge.complete {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .onboarding-step-title {
   font-size: 0.95rem;
   font-weight: 800;
-  color: var(--color-text);
-  margin: 4px 0 2px;
+  color: var(--color-text, #0f172a);
+  margin: 0 0 6px 0;
 }
 
 .onboarding-step-desc {
   font-size: 0.8rem;
-  color: var(--color-text-muted);
-  line-height: 1.4;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.45;
+  margin: 0 0 14px 0;
+  flex: 1;
 }
 
-.onboarding-footer {
-  display: flex;
+.onboarding-step-action-wrap {
+  margin-top: auto;
+}
+
+.btn-onboarding-step {
+  width: 100%;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 14px;
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-onboarding-step:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.onboarding-step-hint {
+  font-size: 0.74rem;
+  color: var(--color-text-muted, #64748b);
+  margin-top: 6px;
+  line-height: 1.35;
 }
 
 .btn-dismiss-onboarding {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
+  top: 16px;
+  right: 18px;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  color: var(--color-text-muted, #64748b);
   cursor: pointer;
-  font-size: 1rem;
-  padding: 4px;
-  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+  z-index: 2;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
+
 .btn-dismiss-onboarding:hover {
-  color: var(--color-text);
-  background: var(--color-surface-hover);
+  color: var(--color-text, #0f172a);
+  background: var(--color-surface-hover, #f1f5f9);
+  border-color: var(--color-primary, #2563eb);
+}
+
+@media (max-width: 900px) {
+  .onboarding-steps-grid {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-progress-wrap {
+    text-align: left;
+    width: 100%;
+  }
+  .onboarding-progress-meta {
+    justify-content: flex-start;
+  }
 }
 
 /* Contextual Developer-Doc Style Tips */
@@ -9351,3 +9504,38 @@ body.wizard-mode .main-layout.wizard-step-3 .results-container {
     margin: 0 auto;
   }
 }
+
+/* ================= JOB OPENINGS DIRECTORY & BASELINE ENHANCEMENTS ================= */
+.sidebar-active-job-indicator {
+  display: block;
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobs-empty-state-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.jobs-empty-state-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.jobs-directory-table-view tr:hover td {
+  background: var(--color-surface-hover);
+}
+
+.jobs-directory-table-view td, .jobs-directory-table-view th {
+  vertical-align: middle;
+}
+

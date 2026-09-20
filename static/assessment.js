@@ -141,6 +141,7 @@
     if (btnCheckDevice) {
       btnCheckDevice.addEventListener('click', () => {
         showScreen('preflight');
+        prefetchAssessmentMetadata();
         initializeMediaDevices();
       });
     }
@@ -157,6 +158,7 @@
     const handleLaunchExam = async () => {
       if (state.assessmentId && state.token) {
         showScreen('preflight');
+        prefetchAssessmentMetadata();
         await initializeMediaDevices();
       } else {
         showScreen('auth');
@@ -167,8 +169,7 @@
     const examItemCampus = document.getElementById('exam-item-campus');
     const handleLaunchCampusExam = async (e) => {
       if (e) e.stopPropagation();
-      const roleTrackSelect = document.getElementById('role-track-select');
-      if (roleTrackSelect) roleTrackSelect.value = 'campus_graduate_engineer';
+      state.roleTrack = 'campus_graduate_engineer';
       try {
         const res = await fetch('/api/v1/assessments/demo/candidate-view?role=campus_graduate_engineer');
         if (res.ok) {
@@ -383,12 +384,43 @@
 
       // Transition smoothly to Preflight Check (Next Screen)
       showScreen('preflight');
+      prefetchAssessmentMetadata();
       await initializeMediaDevices();
 
     } catch (err) {
       otpErrorMsg.textContent = err.message;
       btnVerifyOtp.disabled = false;
       btnVerifyOtp.textContent = "Verify & Continue";
+    }
+  }
+
+  // --- Dynamic Assessment Metadata Prefetch ---
+  async function prefetchAssessmentMetadata() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const role = state.roleTrack || urlParams.get('role');
+      let url = `/api/v1/assessments/${state.assessmentId || 'demo'}/candidate-view?token=${encodeURIComponent(state.token || '')}`;
+      if (role) url += `&role=${encodeURIComponent(role)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.job_title) {
+          state.jobTitle = data.job_title;
+          const preflightJobTitle = document.getElementById('preflight-job-title');
+          if (preflightJobTitle) preflightJobTitle.textContent = data.job_title;
+          const preflightJobDesc = document.getElementById('preflight-job-desc');
+          if (preflightJobDesc) preflightJobDesc.textContent = `Tailored technical evaluation generated directly from recruiter requirements for ${data.job_title}.`;
+          const headerJob = document.getElementById('header-job-title');
+          if (headerJob) headerJob.textContent = `Position: ${data.job_title}`;
+        }
+        if (data.assessment_title) {
+          state.assessmentTitle = data.assessment_title;
+          const headerAssess = document.getElementById('header-assessment-title');
+          if (headerAssess) headerAssess.textContent = `Assessment: ${data.assessment_title}`;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not prefetch assessment metadata:", e);
     }
   }
 
@@ -558,8 +590,10 @@
       updateStrikeHUD();
       showScreen('assessment');
 
-      // Reset question 0
+      // Reset question 0 and restart timer & proctoring loop
       loadQuestion(0);
+      startCountdownTimer();
+      startProctoringHeartbeat();
       showViolationToast(`🔄 Restarted: Attempt ${state.currentAttempt} of ${state.maxAttempts} active.`);
 
     } catch (err) {
@@ -592,10 +626,7 @@
   async function launchLiveAssessment() {
     await requestFullscreenSafely();
 
-    const preflightRole = document.getElementById('preflight-role-select')?.value || '';
-    if (preflightRole) state.roleTrack = preflightRole;
-
-    // Load Questions & Workspace
+    // Load Questions & Workspace tailored to company's assessment
     await loadCandidateWorkspace(state.roleTrack);
     showScreen('assessment');
     startCountdownTimer();
@@ -725,21 +756,11 @@
     });
   }
 
-  // Track Selector change listener in test room
-  const roleTrackSelect = document.getElementById('role-track-select');
-  if (roleTrackSelect) {
-    roleTrackSelect.addEventListener('change', async (e) => {
-      const selectedRole = e.target.value;
-      state.candidateAnswers = {};
-      await loadCandidateWorkspace(selectedRole);
-    });
-  }
-
   async function loadCandidateWorkspace(roleTrack) {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      const targetRole = roleTrack || state.roleTrack || urlParams.get('role') || document.getElementById('preflight-role-select')?.value || 'software_engineer';
-      state.roleTrack = targetRole;
+      const targetRole = roleTrack || state.roleTrack || urlParams.get('role') || '';
+      if (targetRole) state.roleTrack = targetRole;
 
       let data = null;
       try {
@@ -835,8 +856,14 @@
         headerAssess.textContent = `Assessment: ${state.assessmentTitle || 'Technical Assessment'}`;
       }
 
-      if (roleTrackSelect && data.role_track) {
-        roleTrackSelect.value = data.role_track;
+      // Update dynamic preflight scope card
+      const preflightJobTitle = document.getElementById('preflight-job-title');
+      if (preflightJobTitle && state.jobTitle) {
+        preflightJobTitle.textContent = state.jobTitle;
+      }
+      const preflightJobDesc = document.getElementById('preflight-job-desc');
+      if (preflightJobDesc && state.jobTitle) {
+        preflightJobDesc.textContent = `Tailored technical evaluation generated directly from recruiter requirements for ${state.jobTitle}.`;
       }
 
       renderQuestionTabs();
@@ -1656,12 +1683,13 @@
   function calculateAudioRms() {
     if (!state.analyserNode || !state.micDataArray) return 0.0;
     state.analyserNode.getByteFrequencyData(state.micDataArray);
-    let sumSquares = 0;
+    let sum = 0;
     for (let i = 0; i < state.micDataArray.length; i++) {
-      const norm = (state.micDataArray[i] / 128.0) - 1.0;
-      sumSquares += norm * norm;
+      sum += state.micDataArray[i];
     }
-    return Math.min(1.0, Math.sqrt(sumSquares / state.micDataArray.length));
+    // Frequency data is 0..255. Average normalized by 255 gives true sound intensity (0.0 = silence, 1.0 = peak)
+    const normalizedEnergy = sum / (state.micDataArray.length * 255.0);
+    return Math.min(1.0, Math.max(0.0, normalizedEnergy));
   }
 
   function handleProctorCheckResult(res) {

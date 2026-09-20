@@ -520,7 +520,7 @@
     /* Floating Proctoring HUD */
     .floating-proctor-hud {
       position: fixed;
-      bottom: 24px;
+      bottom: 72px;
       right: 24px;
       width: 220px;
       height: 155px;
@@ -2057,44 +2057,25 @@
         </ul>
       </div>
 
-      <div style="margin-bottom: 20px; text-align: left;">
-        <label for="preflight-role-select" style="display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; font-weight: 600;">
-          Select Exam Track (20 Specialized Industry Role Exams Available):
-        </label>
-        <select id="preflight-role-select" style="width: 100%; padding: 10px 14px; background: #090d16; border: 1px solid #334155; border-radius: 8px; color: #38bdf8; font-size: 0.88rem; font-weight: 600; cursor: pointer;">
-          <option value="software_engineer">1. Software Engineer (Backend & DSA - Rate Limiter & Two Sum)</option>
-          <option value="data_engineer">2. Data Engineer (SQL Window Functions & Stream Pipeline)</option>
-          <option value="frontend_engineer">3. Frontend Engineer (JavaScript & Systems - Debounce & Tree DFS)</option>
-          <option value="ml_engineer">4. AI & ML Engineer (Math & Vectors - Cosine Top-K & Gradient Step)</option>
-          <option value="devops_sre">5. DevOps & Cloud SRE (Infrastructure & Systems - Log Parser & Retry)</option>
-          <option value="fullstack_engineer">6. Full Stack Engineer (API Architecture, DB & State - Query Normalizer & Event Bus Debugging)</option>
-          <option value="security_engineer">7. Cybersecurity & AppSec (SQLi/XSS Detector & Timing Attack Defense)</option>
-          <option value="data_analyst">8. Data Analyst & BI (MoM Revenue Growth SQL & Customer Tiering)</option>
-          <option value="qa_automation_engineer">9. SDET & QA Automation (Flaky Retry Runner & Schema Validator Debugging)</option>
-          <option value="mobile_engineer">10. Mobile Engineer (LRU Image Cache & Retain Cycle Defense)</option>
-          <option value="cloud_architect">11. Cloud Solutions Architect (Multi-Region Latency & Cost Anomaly SQL)</option>
-          <option value="database_administrator">12. Database Administrator & Performance (Slow Query SQL & Deadlock Cycle)</option>
-          <option value="blockchain_engineer">13. Web3 & Blockchain Engineer (Merkle Root Hash & Whale Volume SQL)</option>
-          <option value="embedded_iot_engineer">14. Embedded Systems & IoT (Bitwise Register Mask & Ring Buffer)</option>
-          <option value="nlp_engineer">15. NLP & Large Language Model Engineer (Sliding Token Chunking & LLM Costs)</option>
-          <option value="computer_vision_engineer">16. Computer Vision Engineer (IoU Bounding Box & Class SQL)</option>
-          <option value="platform_engineer">17. Platform & DevEx Engineer (Semver Conflict Resolver & CI Duration)</option>
-          <option value="data_scientist">18. Data Scientist (Feature Normalizer & A/B Test Variant Conversion SQL)</option>
-          <option value="api_integrations_engineer">19. API & Enterprise Integrations (Webhook Signature & Error Rate SQL)</option>
-          <option value="game_developer">20. Game Engine & Graphics Developer (2D Circle Collision & Physics Delta)</option>
-        </select>
+      <!-- Dynamic Position & Evaluation Scope Card (Company/Recruiter Driven) -->
+      <div style="margin-bottom: 20px; text-align: left; background: #090d16; border: 1px solid #1e293b; border-radius: 10px; padding: 14px 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Target Position & Assessment Scope</span>
+          <span id="preflight-badge-status" style="font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25);">Active Recruiter Scope</span>
+        </div>
+        <div id="preflight-job-title" style="font-size: 1.05rem; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">
+          Software Engineer
+        </div>
+        <div id="preflight-job-desc" style="font-size: 0.8rem; color: #94a3b8; line-height: 1.4; margin-bottom: 12px;">
+          Tailored technical evaluation generated directly from the recruiter's job requirements and competencies.
+        </div>
 
-        <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.72rem;">
-          <span style="background: rgba(168,85,247,0.15); color: #c084fc; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(168,85,247,0.3);">📘 MCQ Concepts</span>
-          <span style="background: rgba(168,85,247,0.15); color: #c084fc; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(168,85,247,0.3);">🏛️ System Architecture</span>
-          <span style="background: rgba(6,182,212,0.15); color: #22d3ee; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(6,182,212,0.3);">💻 DSA Algorithms</span>
-          <span style="background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">🗄️ SQL Window/CTEs</span>
-          <span style="background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">📊 SQL Analytics</span>
-          <span style="background: rgba(245,158,11,0.15); color: #fbbf24; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(245,158,11,0.3);">🐛 Code Debugging</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.72rem;">
+          <span style="background: rgba(168,85,247,0.15); color: #c084fc; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(168,85,247,0.3);">📘 Domain MCQs</span>
+          <span style="background: rgba(6,182,212,0.15); color: #22d3ee; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(6,182,212,0.3);">💻 Live Code Sandbox</span>
+          <span style="background: rgba(16,185,129,0.15); color: #34d399; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.3);">🗄️ SQL & Architecture</span>
+          <span style="background: rgba(245,158,11,0.15); color: #fbbf24; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(245,158,11,0.3);">🐛 Debugging & Edge Cases</span>
           <span style="background: rgba(244,63,94,0.15); color: #fb7185; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(244,63,94,0.3);">🛡️ Security Defense</span>
-          <span style="background: rgba(59,130,246,0.15); color: #60a5fa; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(59,130,246,0.3);">⚡ Caching & Perf</span>
-          <span style="background: rgba(99,102,241,0.15); color: #818cf8; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(99,102,241,0.3);">🔄 Resilience & Retry</span>
-          <span style="background: rgba(20,184,166,0.15); color: #2dd4bf; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(20,184,166,0.3);">🔀 Data Pipeline ETL</span>
         </div>
       </div>
 
@@ -2390,29 +2371,6 @@
         <span class="brand-logo-pill">AuditAgent.ai</span>
         <span id="header-assessment-title" style="font-weight: 700; font-size: 0.92rem; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.25);">Assessment: Technical Assessment</span>
         <span id="header-job-title" style="font-weight: 600; font-size: 0.88rem; color: var(--text-muted);">Position: Engineering Role</span>
-        <select id="role-track-select" title="Switch between Exam Tracks" style="background: #1e293b; border: 1px solid #334155; color: #38bdf8; padding: 4px 8px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer;">
-          <option value="campus_graduate_engineer" selected>🎓 Campus &amp; Graduate Engineer (Aptitude &amp; Core CS · 4 Modules)</option>
-          <option value="software_engineer">1. Software Engineer (DSA)</option>
-          <option value="data_engineer">2. Data Engineer (SQL/Pipelines)</option>
-          <option value="frontend_engineer">3. Frontend (JS/DOM)</option>
-          <option value="ml_engineer">4. AI / ML (Vectors)</option>
-          <option value="devops_sre">5. DevOps / SRE (Infra)</option>
-          <option value="fullstack_engineer">6. Full Stack (API/Auth)</option>
-          <option value="security_engineer">7. Security (AppSec)</option>
-          <option value="data_analyst">8. Data Analyst (BI SQL)</option>
-          <option value="qa_automation_engineer">9. QA SDET (Testing)</option>
-          <option value="mobile_engineer">10. Mobile (iOS/Android)</option>
-          <option value="cloud_architect">11. Cloud Architect (Multi-Region)</option>
-          <option value="database_administrator">12. Database Admin (DBA)</option>
-          <option value="blockchain_engineer">13. Blockchain & Web3 (Solidity)</option>
-          <option value="embedded_iot_engineer">14. Embedded & IoT (Firmware)</option>
-          <option value="nlp_engineer">15. NLP & LLM (GenAI)</option>
-          <option value="computer_vision_engineer">16. Computer Vision (CNN/IoU)</option>
-          <option value="platform_engineer">17. Platform & DevEx (GitOps)</option>
-          <option value="data_scientist">18. Data Scientist (Stats/AB)</option>
-          <option value="api_integrations_engineer">19. API Integrations (OAuth/Webhooks)</option>
-          <option value="game_developer">20. Game Dev & Graphics (Physics)</option>
-        </select>
       </div>
 
       <div class="test-status-cluster">

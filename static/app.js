@@ -1,3 +1,35 @@
+// ================= STRICT AUTHENTICATION ROUTE GUARD =================
+(function enforceAuthRouteGuard() {
+  try {
+    const path = window.location.pathname;
+    const isMainApp = path === '/' || path.endsWith('/index.html') || path === '';
+    if (!isMainApp) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('demo') === 'true' || urlParams.get('test_mode') === 'true') return;
+
+    const token = localStorage.getItem('auditagent_jwt');
+    const authUser = localStorage.getItem('auditagent_auth_user');
+    const recruiterName = localStorage.getItem('hr_recruiter_name');
+    const isExplicitLoggedOut = sessionStorage.getItem('auditagent_logged_out') === 'true';
+
+    // Strict redirect if:
+    // 1. User explicitly clicked Sign Out (persisted in session)
+    // 2. Strict auth query parameter is passed (?auth=strict)
+    // 3. Running in production (non-localhost) without valid auth credentials
+    const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    const isStrict = urlParams.get('auth') === 'strict' || urlParams.get('auth_check') === '1';
+
+    if (isExplicitLoggedOut || isStrict || (isProduction && !token && !authUser && !recruiterName)) {
+      if (!token && !authUser && !recruiterName || isExplicitLoggedOut) {
+        window.location.replace('/landing.html');
+      }
+    }
+  } catch (err) {
+    console.warn("Auth route guard check error:", err);
+  }
+})();
+
 let currentSelectedFile = null;
 let currentScorecardData = null;
 let currentBatchData = null;
@@ -462,6 +494,7 @@ function initSidebarAndTopbar() {
         localStorage.setItem('hr_recruiter_email', 'sarah@acmecorp.com');
         updateUserDisplay();
         if (typeof updateHrGreeting === 'function') updateHrGreeting();
+        if (typeof loadHrDashboardData === 'function') loadHrDashboardData();
         if (dropdown) dropdown.style.display = 'none';
         if (window.showToast) window.showToast('Switched to Sarah Jenkins (Lead Recruiter)', 'info');
       });
@@ -474,6 +507,7 @@ function initSidebarAndTopbar() {
         localStorage.setItem('hr_recruiter_email', 'alex@acmecorp.com');
         updateUserDisplay();
         if (typeof updateHrGreeting === 'function') updateHrGreeting();
+        if (typeof loadHrDashboardData === 'function') loadHrDashboardData();
         if (dropdown) dropdown.style.display = 'none';
         if (window.showToast) window.showToast('Switched to Alex Mercer (Hiring Manager)', 'info');
       });
@@ -490,6 +524,11 @@ function initSidebarAndTopbar() {
         localStorage.removeItem('auditagent_auth_user');
         localStorage.removeItem('auditagent_jwt');
         localStorage.removeItem('auditagent_org_id');
+        localStorage.removeItem('hr_recruiter_name');
+        localStorage.removeItem('hr_recruiter_role');
+        localStorage.removeItem('hr_recruiter_email');
+        localStorage.removeItem('auditagent_active_job');
+        sessionStorage.setItem('auditagent_logged_out', 'true');
         window.location.href = '/landing.html';
       });
     }
@@ -669,19 +708,278 @@ const HR_INTELLIGENCE_QUOTES = [
 let hrQuoteIndex = 0;
 let hrQuoteInterval = null;
 
-function updateHrGreeting() {
-  const greetingEl = document.getElementById('hr-greeting-name');
-  if (!greetingEl) return;
-  const hour = new Date().getHours();
-  let timeStr = 'Good morning';
-  if (hour >= 12 && hour < 17) {
-    timeStr = 'Good afternoon';
-  } else if (hour >= 17) {
-    timeStr = 'Good evening';
+// ================= USER-SPECIFIC ONBOARDING SYSTEM =================
+function getActiveRecruiterEmail() {
+  const authUserStr = localStorage.getItem('auditagent_auth_user');
+  if (authUserStr) {
+    try {
+      const u = JSON.parse(authUserStr);
+      if (u && u.email) return u.email.trim().toLowerCase();
+    } catch (e) {}
   }
+  const hrEmail = localStorage.getItem('hr_recruiter_email');
+  if (hrEmail) return hrEmail.trim().toLowerCase();
+  const hrName = (localStorage.getItem('hr_recruiter_name') || '').toLowerCase();
+  if (hrName.includes('alex')) return 'alex@acmecorp.com';
+  return 'sarah@acmecorp.com';
+}
+
+function getOnboardingStorageKey(email) {
+  const targetEmail = (email || getActiveRecruiterEmail() || 'default').toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+  return `auditagent_onboarding_${targetEmail}`;
+}
+
+function loadLocalOnboardingState(email) {
+  const key = getOnboardingStorageKey(email);
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        dismissed: !!parsed.dismissed,
+        audit_reviewed: !!parsed.audit_reviewed,
+        completed: !!parsed.completed,
+        manually_reopened: !!parsed.manually_reopened
+      };
+    }
+  } catch (e) {
+    console.warn('Failed to parse onboarding state:', e);
+  }
+  return { dismissed: false, audit_reviewed: false, completed: false, manually_reopened: false };
+}
+
+function saveLocalOnboardingState(state, email) {
+  const targetEmail = email || getActiveRecruiterEmail();
+  const key = getOnboardingStorageKey(targetEmail);
+  try {
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch (e) {
+    console.warn('Failed to save onboarding state:', e);
+  }
+  syncOnboardingStateToBackend(targetEmail, state).catch(() => {});
+}
+
+async function syncOnboardingStateToBackend(email, state) {
+  try {
+    await fetch('/api/v1/auth/onboarding-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: email,
+        dismissed: state.dismissed,
+        audit_reviewed: state.audit_reviewed,
+        completed: state.completed
+      })
+    });
+  } catch (e) {
+    // Graceful client fallback
+  }
+}
+
+async function fetchOnboardingStateFromBackend(email) {
+  try {
+    const res = await fetch(`/api/v1/auth/onboarding-state?email=${encodeURIComponent(email)}`);
+    if (res.ok) {
+      const data = await res.json();
+      const local = loadLocalOnboardingState(email);
+      // If user manually reopened locally, do not let remote dismissed overwrite it
+      const isDismissed = local.manually_reopened ? false : (local.dismissed || !!data.dismissed);
+      const merged = {
+        dismissed: isDismissed,
+        audit_reviewed: local.audit_reviewed || !!data.audit_reviewed,
+        completed: local.completed || !!data.completed,
+        manually_reopened: !!local.manually_reopened
+      };
+      const key = getOnboardingStorageKey(email);
+      localStorage.setItem(key, JSON.stringify(merged));
+      return merged;
+    }
+  } catch (e) {}
+  return loadLocalOnboardingState(email);
+}
+
+function markOnboardingAuditReviewed() {
+  const email = getActiveRecruiterEmail();
+  const state = loadLocalOnboardingState(email);
+  if (!state.audit_reviewed) {
+    state.audit_reviewed = true;
+    saveLocalOnboardingState(state, email);
+    if (typeof loadHrDashboardData === 'function') {
+      loadHrDashboardData();
+    }
+  }
+}
+
+function updateHrGreeting(isReturning = false) {
+  const greetingEl = document.getElementById('hr-greeting-name');
+  const subtitleEl = document.getElementById('hr-greeting-subtitle');
   const recruiterName = localStorage.getItem('hr_recruiter_name') || 'Sarah';
   const firstName = recruiterName.trim().split(/\s+/)[0] || 'Sarah';
-  greetingEl.innerHTML = `${timeStr}, ${escapeHtml(firstName)} 👋`;
+
+  if (greetingEl) {
+    if (isReturning) {
+      greetingEl.innerHTML = `Welcome back, ${escapeHtml(firstName)} 👋`;
+    } else {
+      greetingEl.innerHTML = `Welcome, ${escapeHtml(firstName)} 👋`;
+    }
+  }
+  if (subtitleEl) {
+    if (isReturning) {
+      subtitleEl.textContent = "Here's what's happening across your hiring pipeline.";
+    } else {
+      subtitleEl.textContent = "Let's get your hiring workspace ready.";
+    }
+  }
+}
+
+function updateOnboardingChecklistUI(jobs, stats, historyRecords) {
+  const email = getActiveRecruiterEmail();
+  const state = loadLocalOnboardingState(email);
+
+  const container = document.getElementById('hr-onboarding-container');
+  const reopenBtn = document.getElementById('btn-reopen-onboarding');
+  if (!container) return;
+
+  // Step 1: Create your first job -> completed if recruiter has created at least one job
+  const step1Complete = Array.isArray(jobs) && jobs.length > 0;
+
+  // Step 2: Screen your first candidate -> completed if a candidate screening has actually been completed
+  const totalScreened = (stats && typeof stats.total_screened === 'number') ? stats.total_screened : 0;
+  const hasHistory = Array.isArray(historyRecords) && historyRecords.length > 0;
+  const step2Complete = totalScreened > 0 || hasHistory;
+
+  // Step 3: Review the candidate audit -> enabled if suitable candidate audit exists; completed when recruiter opened/reviewed it
+  const canReviewAudit = step2Complete;
+  const step3Complete = step2Complete && state.audit_reviewed === true;
+
+  // Count completed
+  const completedCount = (step1Complete ? 1 : 0) + (step2Complete ? 1 : 0) + (step3Complete ? 1 : 0);
+  const isAllComplete = completedCount === 3;
+
+  if (isAllComplete && !state.completed) {
+    state.completed = true;
+    saveLocalOnboardingState(state, email);
+  }
+
+  // Returning vs First-time state:
+  // Only hide automatically if dismissed OR (completed AND not manually reopened).
+  // If recruiter clicked [📋 Onboarding Guide], keep card visible so they can review their checklist!
+  const shouldHide = state.dismissed || (state.completed && !state.manually_reopened);
+
+  if (shouldHide) {
+    container.style.display = 'none';
+    if (reopenBtn) reopenBtn.style.display = 'inline-flex';
+    updateHrGreeting(true);
+  } else {
+    container.style.display = 'block';
+    if (reopenBtn) reopenBtn.style.display = 'none';
+    updateHrGreeting(state.completed && !state.manually_reopened);
+  }
+
+  // Update Progress Bar
+  const progressText = document.getElementById('onboarding-progress-text');
+  const progressBar = document.getElementById('onboarding-progress-bar');
+  if (progressText) {
+    progressText.textContent = `${completedCount} of 3 completed`;
+  }
+  if (progressBar) {
+    const pct = Math.round((completedCount / 3) * 100);
+    progressBar.style.width = `${pct}%`;
+  }
+
+  // Step 1 UI
+  const stepBox1 = document.getElementById('onboarding-step-box-1');
+  const badge1 = document.getElementById('onboarding-step-badge-1');
+  const btn1 = document.getElementById('btn-onboarding-step-1');
+  if (stepBox1 && badge1) {
+    if (step1Complete) {
+      stepBox1.classList.add('completed');
+      badge1.className = 'onboarding-step-badge complete';
+      badge1.textContent = 'Completed ✓';
+      if (btn1) {
+        btn1.innerHTML = '<span>✓</span> Job Created';
+        btn1.classList.remove('btn-primary');
+        btn1.classList.add('btn-secondary');
+      }
+    } else {
+      stepBox1.classList.remove('completed');
+      badge1.className = 'onboarding-step-badge pending';
+      badge1.textContent = 'Pending';
+      if (btn1) {
+        btn1.innerHTML = '<span>💼</span> Create a Job';
+        btn1.classList.remove('btn-secondary');
+        btn1.classList.add('btn-primary');
+      }
+    }
+  }
+
+  // Step 2 UI
+  const stepBox2 = document.getElementById('onboarding-step-box-2');
+  const badge2 = document.getElementById('onboarding-step-badge-2');
+  const btn2 = document.getElementById('btn-onboarding-step-2');
+  if (stepBox2 && badge2) {
+    if (step2Complete) {
+      stepBox2.classList.add('completed');
+      badge2.className = 'onboarding-step-badge complete';
+      badge2.textContent = 'Completed ✓';
+      if (btn2) {
+        btn2.innerHTML = '<span>✓</span> Candidate Screened';
+        btn2.classList.remove('btn-primary');
+        btn2.classList.add('btn-secondary');
+      }
+    } else {
+      stepBox2.classList.remove('completed');
+      badge2.className = 'onboarding-step-badge pending';
+      badge2.textContent = 'Pending';
+      if (btn2) {
+        btn2.innerHTML = '<span>⚡</span> Screen a Candidate';
+        btn2.classList.remove('btn-secondary');
+        btn2.classList.add('btn-primary');
+      }
+    }
+  }
+
+  // Step 3 UI
+  const stepBox3 = document.getElementById('onboarding-step-box-3');
+  const badge3 = document.getElementById('onboarding-step-badge-3');
+  const btn3 = document.getElementById('btn-onboarding-step-3');
+  const hint3 = document.getElementById('onboarding-step-3-hint');
+  if (stepBox3 && badge3 && btn3) {
+    if (step3Complete) {
+      stepBox3.classList.add('completed');
+      badge3.className = 'onboarding-step-badge complete';
+      badge3.textContent = 'Completed ✓';
+      btn3.disabled = false;
+      btn3.innerHTML = '<span>✓</span> Audit Reviewed';
+      btn3.classList.remove('btn-primary');
+      btn3.classList.add('btn-secondary');
+      if (hint3) hint3.textContent = 'Audit scorecard and evidence verified.';
+    } else if (canReviewAudit) {
+      stepBox3.classList.remove('completed');
+      badge3.className = 'onboarding-step-badge in-progress';
+      badge3.textContent = 'Ready';
+      btn3.disabled = false;
+      btn3.innerHTML = '<span>📋</span> View Candidate Audit';
+      btn3.classList.remove('btn-secondary');
+      btn3.classList.add('btn-primary');
+      if (hint3) hint3.textContent = 'Ready to review: Candidate screening results available.';
+    } else {
+      stepBox3.classList.remove('completed');
+      badge3.className = 'onboarding-step-badge pending';
+      badge3.textContent = 'Pending';
+      btn3.disabled = true;
+      btn3.innerHTML = '<span>📋</span> View Candidate Audit';
+      btn3.classList.remove('btn-secondary');
+      btn3.classList.add('btn-primary');
+      if (hint3) hint3.textContent = 'Complete Step 2 first to generate an audit.';
+    }
+  }
+
+  // All complete banner inside card
+  const allCompleteBanner = document.getElementById('onboarding-all-complete-banner');
+  if (allCompleteBanner) {
+    allCompleteBanner.style.display = isAllComplete ? 'flex' : 'none';
+  }
 }
 
 function startHrQuoteRotator() {
@@ -707,51 +1005,151 @@ function initHrHomeDashboard() {
   updateHrGreeting();
   startHrQuoteRotator();
 
-  // Onboarding banner visibility check
-  const onboardingBanner = document.getElementById('hr-onboarding-banner');
-  const dismissBtn = document.getElementById('btn-dismiss-onboarding');
-  const isDismissed = localStorage.getItem('hr_onboarding_dismissed') === 'true';
-
-  if (onboardingBanner) {
-    onboardingBanner.style.display = isDismissed ? 'none' : 'block';
-  }
-
-  if (dismissBtn && onboardingBanner) {
-    dismissBtn.addEventListener('click', () => {
-      onboardingBanner.style.display = 'none';
-      localStorage.setItem('hr_onboarding_dismissed', 'true');
-    });
-  }
-
-  const btnOnboardingCreate = document.getElementById('btn-onboarding-create-job');
-  if (btnOnboardingCreate) {
-    btnOnboardingCreate.addEventListener('click', () => {
+  // Wire Onboarding Step 1 Action
+  const btnOnboardingStep1 = document.getElementById('btn-onboarding-step-1');
+  if (btnOnboardingStep1) {
+    btnOnboardingStep1.addEventListener('click', () => {
       document.getElementById('tab-jobs-btn')?.click();
       setTimeout(() => {
-        document.getElementById('job-title')?.focus();
+        const titleInput = document.getElementById('job-create-title') || document.getElementById('job-title');
+        if (titleInput) {
+          titleInput.focus();
+          titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }, 150);
     });
   }
 
-  const btnOnboardingGuide = document.getElementById('btn-onboarding-guide');
-  if (btnOnboardingGuide) {
-    btnOnboardingGuide.addEventListener('click', () => {
-      const overviewBtn = document.getElementById('btn-open-platform-overview');
-      if (overviewBtn) overviewBtn.click();
+  // Wire Onboarding Step 2 Action
+  const btnOnboardingStep2 = document.getElementById('btn-onboarding-step-2');
+  if (btnOnboardingStep2) {
+    btnOnboardingStep2.addEventListener('click', () => {
+      document.getElementById('tab-single-btn')?.click();
+      setTimeout(() => {
+        const dropZone = document.getElementById('resume-drop-zone') || document.getElementById('resume-input');
+        if (dropZone) {
+          dropZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
     });
   }
 
-  // Action buttons on Home view
+  // Wire Onboarding Step 3 Action
+  const btnOnboardingStep3 = document.getElementById('btn-onboarding-step-3');
+  if (btnOnboardingStep3) {
+    btnOnboardingStep3.addEventListener('click', () => {
+      if (btnOnboardingStep3.disabled) {
+        if (window.showToast) window.showToast('Please screen a candidate first to generate an audit scorecard.', 'info');
+        return;
+      }
+      markOnboardingAuditReviewed();
+      // Switch to single audit or scorecard view
+      document.getElementById('tab-single-btn')?.click();
+      setTimeout(() => {
+        const resultCard = document.getElementById('state-result') || document.getElementById('eval-hero-scorecard');
+        if (resultCard && resultCard.style.display !== 'none') {
+          resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          const historyTbody = document.getElementById('home-recent-screenings-tbody');
+          if (historyTbody) {
+            document.getElementById('tab-home-btn')?.click();
+            historyTbody.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      }, 150);
+    });
+  }
+
+  // Dismiss button on Onboarding Card
+  const dismissBtn = document.getElementById('btn-dismiss-onboarding');
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      const email = getActiveRecruiterEmail();
+      const state = loadLocalOnboardingState(email);
+      state.dismissed = true;
+      state.manually_reopened = false;
+      saveLocalOnboardingState(state, email);
+      const container = document.getElementById('hr-onboarding-container');
+      if (container) container.style.display = 'none';
+      const reopenBtn = document.getElementById('btn-reopen-onboarding');
+      if (reopenBtn) reopenBtn.style.display = 'inline-flex';
+      updateHrGreeting(true);
+      if (window.showToast) window.showToast('Onboarding guide dismissed. Reopen anytime from the top bar.', 'info');
+    });
+  }
+
+  // Done button on All Complete banner
+  const finishBtn = document.getElementById('btn-onboarding-finish');
+  if (finishBtn) {
+    finishBtn.addEventListener('click', () => {
+      const email = getActiveRecruiterEmail();
+      const state = loadLocalOnboardingState(email);
+      state.dismissed = true;
+      state.completed = true;
+      state.manually_reopened = false;
+      saveLocalOnboardingState(state, email);
+      const container = document.getElementById('hr-onboarding-container');
+      if (container) container.style.display = 'none';
+      const reopenBtn = document.getElementById('btn-reopen-onboarding');
+      if (reopenBtn) reopenBtn.style.display = 'inline-flex';
+      updateHrGreeting(true);
+      if (window.showToast) window.showToast('Workspace setup finished! Welcome to your dashboard.', 'success');
+    });
+  }
+
+  // Reopen Guide helper
+  window.openOnboardingGuide = function() {
+    const email = getActiveRecruiterEmail();
+    const state = loadLocalOnboardingState(email);
+    state.dismissed = false;
+    state.manually_reopened = true;
+    saveLocalOnboardingState(state, email);
+
+    // Switch to Home tab where onboarding card lives
+    const homeTabBtn = document.getElementById('tab-home-btn');
+    if (homeTabBtn && !homeTabBtn.classList.contains('active')) {
+      homeTabBtn.click();
+    }
+
+    const container = document.getElementById('hr-onboarding-container');
+    if (container) {
+      container.style.display = 'block';
+      setTimeout(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    }
+    const reopenBtn = document.getElementById('btn-reopen-onboarding');
+    if (reopenBtn) reopenBtn.style.display = 'none';
+
+    if (typeof loadHrDashboardData === 'function') {
+      loadHrDashboardData();
+    }
+  };
+
+  // Reopen Guide button in top bar
+  const reopenBtn = document.getElementById('btn-reopen-onboarding');
+  if (reopenBtn) {
+    reopenBtn.addEventListener('click', () => {
+      window.openOnboardingGuide();
+    });
+  }
+
+  // Action buttons on Home view: + Create Job
   const btnHomeCreate = document.getElementById('btn-home-create-job');
   if (btnHomeCreate) {
     btnHomeCreate.addEventListener('click', () => {
       document.getElementById('tab-jobs-btn')?.click();
       setTimeout(() => {
-        document.getElementById('job-title')?.focus();
+        const titleInput = document.getElementById('job-create-title') || document.getElementById('job-title');
+        if (titleInput) {
+          titleInput.focus();
+          titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }, 150);
     });
   }
 
+  // Action button: Screen Candidate
   const btnHomeAudit = document.getElementById('btn-home-new-audit');
   if (btnHomeAudit) {
     btnHomeAudit.addEventListener('click', () => {
@@ -759,6 +1157,7 @@ function initHrHomeDashboard() {
     });
   }
 
+  // Action button: Refresh Activity
   const btnRefreshActivity = document.getElementById('btn-home-refresh-activity');
   if (btnRefreshActivity) {
     btnRefreshActivity.addEventListener('click', () => {
@@ -766,8 +1165,11 @@ function initHrHomeDashboard() {
     });
   }
 
-  // Initial Load of real metrics
-  loadHrDashboardData();
+  // Initial fetch of remote state and real metrics
+  const email = getActiveRecruiterEmail();
+  fetchOnboardingStateFromBackend(email).then(() => {
+    loadHrDashboardData();
+  });
 }
 
 async function loadHrDashboardData() {
@@ -839,6 +1241,9 @@ async function loadHrDashboardData() {
 
     // 6. Populate Recent Activity Table
     renderHomeRecentActivity(historyRecords, jobs);
+
+    // 7. Update First-Time Recruiter Onboarding Checklist
+    updateOnboardingChecklistUI(jobs, stats, historyRecords);
 
   } catch (err) {
     console.warn('loadHrDashboardData error:', err);
@@ -1019,6 +1424,7 @@ function renderHomeRecentActivity(records, jobs) {
 
   tbody.querySelectorAll('.btn-inspect-recent-cand').forEach(btn => {
     btn.addEventListener('click', () => {
+      markOnboardingAuditReviewed();
       const singleBtn = document.getElementById('tab-single-btn');
       if (singleBtn) singleBtn.click();
     });
@@ -1865,6 +2271,7 @@ function renderScorecard(result) {
   }
 
   currentScorecardData = result;
+  markOnboardingAuditReviewed();
 
   document.getElementById('res-candidate-name').textContent = result.candidate_name;
 
@@ -2663,6 +3070,7 @@ function getCandidateEmailForScorecard(scorecard) {
   }
   return direct || '';
 }
+window.getCandidateEmailForScorecard = getCandidateEmailForScorecard;
 
   // Recruiter Action Bar Buttons
   const btnActionSchedule = document.getElementById('btn-action-schedule');
@@ -2678,13 +3086,19 @@ function getCandidateEmailForScorecard(scorecard) {
       const candidateName = currentScorecardData.candidate_name || 'Candidate';
       const candidateEmail = getCandidateEmailForScorecard(currentScorecardData);
       const firstName = candidateName.split(' ')[0] || 'there';
-      const draft = currentScorecardData.draft_reply || currentScorecardData.draft_reply_data || {
+      const targetRole = currentScorecardData.target_role || 'Senior Backend Engineer';
+      const score = Math.round(currentScorecardData.overall_score || 85);
+      const roleSlug = targetRole.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const baseUrl = window.location.origin;
+      const assessmentLink = `${baseUrl}/assessment.html?name=${encodeURIComponent(candidateName)}&role=${encodeURIComponent(roleSlug)}`;
+      
+      const draft = {
         recipient_email: candidateEmail,
-        subject: `Interview Invitation: Technical Screen for ${currentScorecardData.target_role || 'Software Engineer'}`,
-        body_text: `Hi ${firstName},\n\nOur engineering team reviewed your background and verified your technical projects. We were very impressed by your work and would love to invite you for a 30-minute introductory technical conversation.\n\nPlease choose a time that works best for you using our scheduling link below:\n👉 https://calendly.com/techcorp-hiring/30min\n\nLooking forward to speaking with you!\n\nBest regards,\nThe Talent Acquisition Team\nTechCorp Solutions`
+        subject: `Technical Assessment & Interview Invitation: ${targetRole} [Score: ${score}/100]`,
+        body_text: `Hi ${firstName},\n\nOur engineering team completed the autonomous audit of your resume and GitHub repositories for the ${targetRole} position. Your profile qualified with an impressive evidence score of ${score}/100!\n\nAs the next step in our hiring process, we invite you to complete our technical skill assessment. This assessment includes role-specific engineering challenges, interactive coding, and database querying designed specifically for this role.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nYOUR ASSESSMENT ACCESS DETAILS:\n👉 Assessment Portal: ${assessmentLink}\n🔑 Access Passcode / OTP: 123456\n⏱️ Duration: 45 - 60 Minutes\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\nEXAM INSTRUCTIONS & PROCTORING GUIDELINES:\n1. Camera & Microphone: Used to verify presence and room safety during the session.\n2. Ambient Noise: A quiet workspace is recommended. Normal room sounds or typing will not penalize you.\n3. Focus: Stay within the assessment tab and full-screen window.\n4. Sandbox Execution: You can run and test your code directly inside the in-browser sandbox before submitting.\n\nFollowing your assessment submission, our talent team will schedule your technical debrief call with engineering leadership.\n\nBest of luck!\n\nBest regards,\nTalent Acquisition & Engineering Hiring Team\nTechCorp Solutions`
       };
       if (candidateEmail) draft.recipient_email = candidateEmail;
-      openDraftModal(draft, `📅 Schedule Interview (${candidateName})`);
+      openDraftModal(draft, `📅 Send Assessment & Interview Invitation (${candidateName})`);
     });
   }
 
@@ -3042,6 +3456,9 @@ function getCandidateEmailForScorecard(scorecard) {
 }
 
 function showPlaceholderState() {
+  if (window.wizardModeActive && typeof window.setWizardStep === 'function') {
+    window.setWizardStep(1);
+  }
   document.getElementById('state-placeholder').style.display = 'flex';
   document.getElementById('state-loading').style.display = 'none';
   document.getElementById('state-result').style.display = 'none';
@@ -3097,6 +3514,9 @@ window.switchScorecardPage = function(pageNum) {
 };
 
 function showResultState() {
+  if (typeof setWizardStep === 'function') {
+    setWizardStep(2);
+  }
   document.getElementById('state-placeholder').style.display = 'none';
   document.getElementById('state-loading').style.display = 'none';
   const resEl = document.getElementById('state-result');
@@ -3232,6 +3652,9 @@ function showCandidateParsingLoading(filename, jobTitle) {
 }
 
 function renderCandidateRecordCard(cand) {
+  if (window.wizardModeActive && typeof window.setWizardStep === 'function') {
+    window.setWizardStep(2);
+  }
   const card = document.getElementById('candidate-record-card');
   const placeholder = document.getElementById('state-placeholder');
   const loading = document.getElementById('state-loading');
@@ -3755,6 +4178,9 @@ function showClaimInspection(claim) {
 }
 
 function showInvalidDocumentState(result) {
+  if (window.wizardModeActive && typeof window.setWizardStep === 'function') {
+    window.setWizardStep(2);
+  }
   currentScorecardData = result;
   document.getElementById('state-placeholder').style.display = 'none';
   document.getElementById('state-loading').style.display = 'none';
@@ -4393,6 +4819,7 @@ function initJdRequirementsGuide() {
   const tabBtns = document.querySelectorAll('#jd-guide-tabs-bar .wf-tab-btn');
   const tabPanels = document.querySelectorAll('.jd-guide-panel');
   const btnCopyTemplate = document.getElementById('btn-copy-authoritative-jd-template');
+  const btnUseTemplate = document.getElementById('btn-use-authoritative-jd-template');
   const templateTextEl = document.getElementById('authoritative-jd-template-text');
   const toastEl = document.getElementById('jd-template-copied-toast');
 
@@ -4441,7 +4868,7 @@ function initJdRequirementsGuide() {
   // Copy template button
   if (btnCopyTemplate && templateTextEl) {
     btnCopyTemplate.addEventListener('click', () => {
-      const textToCopy = templateTextEl.textContent || '';
+      const textToCopy = templateTextEl.value || templateTextEl.textContent || '';
       navigator.clipboard.writeText(textToCopy).then(() => {
         if (toastEl) {
           toastEl.style.display = 'inline-block';
@@ -4452,6 +4879,42 @@ function initJdRequirementsGuide() {
       }).catch((err) => {
         console.error('Failed to copy JD template:', err);
       });
+    });
+  }
+
+  // Use template in Create Job button
+  if (btnUseTemplate && templateTextEl) {
+    btnUseTemplate.addEventListener('click', () => {
+      closeModal();
+      const jobsTabBtn = document.getElementById('tab-jobs-btn');
+      if (jobsTabBtn) jobsTabBtn.click();
+
+      const successCard = document.getElementById('job-created-success-card');
+      const createCard = document.getElementById('card-create-job');
+      if (successCard) successCard.style.display = 'none';
+      if (createCard) createCard.style.display = 'block';
+
+      const titleInput = document.getElementById('job-create-title');
+      const deptInput = document.getElementById('job-create-dept');
+      const locInput = document.getElementById('job-create-loc');
+      const workModelSelect = document.getElementById('job-create-work-model');
+      const expInput = document.getElementById('job-create-exp');
+      const jdTextarea = document.getElementById('job-create-description');
+
+      if (titleInput) titleInput.value = 'Senior Distributed Systems Engineer';
+      if (deptInput) deptInput.value = 'Core Platform Infrastructure';
+      if (locInput) locInput.value = 'San Francisco, CA / Remote';
+      if (workModelSelect) workModelSelect.value = 'remote';
+      if (expInput) expInput.value = '4';
+      if (jdTextarea) {
+        jdTextarea.value = templateTextEl.value || templateTextEl.textContent || '';
+        jdTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+        jdTextarea.focus();
+        jdTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (typeof showToast === 'function') {
+        showToast('🚀 Authoritative JD template loaded into Create Job! Review and click Save Job.', 'success');
+      }
     });
   }
 }
@@ -4574,8 +5037,11 @@ function openDraftModal(draft, title = 'Auto-Drafted Response') {
   const subjectEl = document.getElementById('modal-subject');
   const bodyEl = document.getElementById('modal-body');
 
+  const getEmailFn = typeof getCandidateEmailForScorecard === 'function' 
+    ? getCandidateEmailForScorecard 
+    : (window.getCandidateEmailForScorecard || ((sc) => sc?.candidate_email || sc?.email || ''));
   const realEmail = (draft?.recipient_email && !draft.recipient_email.includes('candidate@example.com') ? draft.recipient_email : '') ||
-                    getCandidateEmailForScorecard(currentScorecardData) || 
+                    getEmailFn(currentScorecardData) || 
                     window.currentDetectedCandidate?.email || 
                     draft?.recipient_email || 
                     '';
@@ -4686,16 +5152,16 @@ function initHistoryControls() {
   const btnClearHistory = document.getElementById('btn-clear-history');
   if (btnClearHistory) {
     btnClearHistory.addEventListener('click', async () => {
-      if (!confirm('Are you sure you want to reset and clear duplicate test screening records?')) return;
+      if (!confirm('Remove duplicate candidate records and refresh screening history?')) return;
       try {
-        const res = await fetch('/api/v1/screenings', { method: 'DELETE' });
+        const res = await fetch('/api/v1/screenings?duplicates_only=true', { method: 'DELETE' });
         if (res.ok) {
-          showToast('Candidate screening records cleared', 'info');
+          showToast('Duplicate records removed successfully', 'success');
           fetchHistory();
           loadDashboardStats();
         }
       } catch (err) {
-        showToast('Failed to reset history: ' + err.message, 'error');
+        showToast('Failed to clean duplicates: ' + err.message, 'error');
       }
     });
   }
@@ -4793,7 +5259,7 @@ function renderHistoryTable() {
   listEl.innerHTML = '';
   pageItems.forEach((item, index) => {
     const row = document.createElement('tr');
-    row.className = 'history-table-row';
+    row.className = 'history-table-row history-item';
     row.style.cursor = 'pointer';
 
     const isInvalid = item.is_valid_resume === false || (item.document && item.document.is_valid_resume === false) || (item.candidate_name || '').toLowerCase().includes('non-resume');
@@ -4838,7 +5304,7 @@ function renderHistoryTable() {
           </div>
           <div style="min-width: 0;">
             <div style="font-weight: 700; font-size: 0.88rem; color: var(--color-text); display: flex; align-items: center; flex-wrap: wrap;">
-              <span>${item.candidate_name || 'Candidate'}</span>
+              <span class="h-candidate">${item.candidate_name || 'Candidate'}</span>
               ${evalPill}
             </div>
             <div style="font-size: 0.72rem; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -4857,7 +5323,7 @@ function renderHistoryTable() {
         <div style="font-size: 0.70rem; color: var(--color-text-dim);">Latency: ${item.latency_seconds || '0.8'}s</div>
       </td>
       <td style="padding: 13px 16px;">
-        <span style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">
+        <span class="rec-badge" style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">
           ${badgeLabel}
         </span>
       </td>
@@ -4869,12 +5335,37 @@ function renderHistoryTable() {
           <span style="font-weight: 800; font-size: 0.88rem; color: ${scoreColor}; font-family: var(--font-mono);">${scoreDisplay}</span>
         </div>
       </td>
-      <td style="padding: 13px 16px; text-align: right;">
+      <td style="padding: 13px 16px; text-align: right; white-space: nowrap;">
         <button type="button" class="btn-sm-table" title="View complete evaluation scorecard">
           Inspect →
         </button>
+        <button type="button" class="btn-delete-screening-item" data-id="${item.id || item.audit_id || ''}" data-name="${encodeURIComponent(item.candidate_name || 'Candidate')}" title="Delete this candidate evaluation" style="margin-left: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(225, 29, 72, 0.3); background: rgba(225, 29, 72, 0.08); color: #e11d48; cursor: pointer; font-size: 0.72rem; transition: all 0.2s;">
+          🗑️
+        </button>
       </td>
     `;
+
+    const delBtn = row.querySelector('.btn-delete-screening-item');
+    if (delBtn) {
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const candName = decodeURIComponent(delBtn.dataset.name || 'this candidate');
+        const screenId = delBtn.dataset.id;
+        if (!confirm(`Delete evaluation record for "${candName}"?`)) return;
+        try {
+          const res = await fetch(`/api/v1/screenings/${encodeURIComponent(screenId)}`, { method: 'DELETE' });
+          if (res.ok) {
+            showToast(`Deleted evaluation for ${candName}`, 'info');
+            fetchHistory();
+            loadDashboardStats();
+          } else {
+            showToast('Failed to delete evaluation', 'error');
+          }
+        } catch (err) {
+          showToast(`Error deleting evaluation: ${err.message}`, 'error');
+        }
+      });
+    }
 
     row.addEventListener('click', () => {
       document.getElementById('tab-single-btn').click();
@@ -5367,7 +5858,7 @@ Preferred Qualifications:
 
   const modalJobIntel = document.getElementById('modal-job-intelligence');
   const btnCloseJobIntel = document.getElementById('btn-close-job-intel-modal');
-  const btnCloseJobIntelBtn = document.getElementById('btn-close-job-intel-modal-btn');
+  const btnCloseJobIntelBtn = document.getElementById('btn-modal-intel-back') || document.getElementById('btn-close-job-intel-modal-btn');
 
   if (btnCloseJobIntel) {
     btnCloseJobIntel.addEventListener('click', () => {
@@ -5439,8 +5930,9 @@ Preferred Qualifications:
           return;
         }
 
-        activeHiringJob = data;
-        localStorage.setItem('auditagent_active_job', JSON.stringify(data));
+        // Check whether this recruiter had an existing baseline or if this is their first real job
+        const hadPriorBaseline = !!(activeHiringJob && activeHiringJob.id);
+        const isFirstJob = !hadPriorBaseline || allHiringJobsCache.length === 0;
 
         const confTitle = document.getElementById('conf-job-title');
         const confId = document.getElementById('conf-job-id');
@@ -5470,12 +5962,49 @@ Preferred Qualifications:
         if (successCard) successCard.style.display = 'block';
         if (createCard) createCard.style.display = 'none';
 
-        setActiveJob(data);
-        loadJobOpeningsList();
-
-        if (typeof showToast === 'function') {
-          showToast(`🎉 Job "${data.title}" created successfully!`, 'success');
+        const btnConfSetBaseline = document.getElementById('btn-conf-set-baseline');
+        if (isFirstJob) {
+          // Requirement 2.B: Automatically select the first job as baseline
+          setActiveJob(data);
+          if (btnConfSetBaseline) {
+            btnConfSetBaseline.style.display = 'inline-flex';
+            btnConfSetBaseline.textContent = '✓ Active Baseline';
+            btnConfSetBaseline.disabled = true;
+          }
+          if (typeof showToast === 'function') {
+            showToast(`Baseline locked to ${data.title}. Ready for screening.`, 'success');
+          }
+        } else {
+          // Requirement 2.C: Preserve existing baseline unchanged for subsequent jobs
+          if (btnConfSetBaseline) {
+            btnConfSetBaseline.style.display = 'inline-flex';
+            btnConfSetBaseline.textContent = '⭐ Set as Active Baseline';
+            btnConfSetBaseline.disabled = false;
+            btnConfSetBaseline.onclick = () => {
+              setActiveJob(data);
+              btnConfSetBaseline.textContent = '✓ Active Baseline';
+              btnConfSetBaseline.disabled = true;
+              if (typeof showToast === 'function') {
+                showToast(`Active baseline set to: ${data.title}`, 'success');
+              }
+            };
+          }
+          if (typeof showToast === 'function') {
+            showToast(`🎉 Job "${data.title}" created successfully!`, 'success');
+          }
         }
+
+        // Configure "Screen Candidates →" button in confirmation card
+        const btnContinueToJob = document.getElementById('btn-continue-to-job');
+        if (btnContinueToJob) {
+          btnContinueToJob.onclick = () => {
+            setActiveJob(data);
+            const candBtn = document.getElementById('tab-candidates-btn') || document.getElementById('tab-single-btn');
+            if (candBtn) candBtn.click();
+          };
+        }
+
+        loadJobOpeningsList();
       } catch (err) {
         showAlert(`Network or server error creating job: ${err.message}`);
       } finally {
@@ -5614,7 +6143,17 @@ function updateActiveJobDisplays(job) {
   const setupPulse = document.getElementById('setup-view-pulse');
   const setupBaselineBadge = document.getElementById('setup-view-baseline-badge');
 
+  // Sidebar and No-Baseline Banner Elements
+  const sidebarRole = document.getElementById('sidebar-active-job-role');
+  const noBaselineBanner = document.getElementById('openings-no-baseline-banner');
+
   if (job) {
+    if (sidebarRole) {
+      sidebarRole.style.display = 'block';
+      sidebarRole.textContent = `Active: ${job.title}`;
+      sidebarRole.title = `Active Baseline: ${job.title} (${job.department || 'Engineering'})`;
+    }
+
     if (strip) strip.style.display = 'flex';
     if (curTitle) curTitle.textContent = job.title;
     if (curId) curId.textContent = job.id.slice(0, 8) + '...';
@@ -5623,6 +6162,7 @@ function updateActiveJobDisplays(job) {
     if (bannerSub) bannerSub.textContent = `${job.department || 'Engineering'} • ${job.location || 'Remote'} (${job.work_model || 'remote'}) • ${job.min_years_experience || 3}+ yrs req`;
 
     if (openingsBanner) openingsBanner.style.display = 'block';
+    if (noBaselineBanner) noBaselineBanner.style.display = 'none';
     if (openingsTitle) openingsTitle.textContent = job.title;
     if (openingsId) openingsId.textContent = `ID: ${job.id.slice(0, 8)}...`;
     if (openingsMeta) openingsMeta.textContent = `${job.department || 'Engineering'} • 📍 ${job.location || 'Remote'} (${job.work_model || 'remote'}) • ⏱️ ${job.min_years_experience || 3}+ yrs req`;
@@ -5637,6 +6177,12 @@ function updateActiveJobDisplays(job) {
 
     updateJobWorkflowStepper(job);
   } else {
+    if (sidebarRole) {
+      sidebarRole.style.display = 'none';
+      sidebarRole.textContent = '';
+      sidebarRole.title = '';
+    }
+
     if (strip) strip.style.display = 'none';
     if (curTitle) curTitle.textContent = 'None';
     if (curId) curId.textContent = '';
@@ -5645,6 +6191,7 @@ function updateActiveJobDisplays(job) {
     if (bannerSub) bannerSub.textContent = 'Create or select a hiring job to establish the evaluation parent baseline.';
 
     if (openingsBanner) openingsBanner.style.display = 'none';
+    if (noBaselineBanner) noBaselineBanner.style.display = 'block';
     if (kpiBaselineTitle) kpiBaselineTitle.textContent = 'None Selected';
     if (kpiPulse) kpiPulse.style.display = 'none';
 
@@ -5703,6 +6250,55 @@ function setActiveJob(job) {
   });
 }
 
+// ================= RECRUITER-SPECIFIC VIEW MODE PREFERENCE =================
+function getRecruiterViewModeStorageKey(email) {
+  const targetEmail = (email || getActiveRecruiterEmail() || 'default').toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+  return `auditagent:job-openings:view-mode:${targetEmail}`;
+}
+
+function loadRecruiterViewMode(email) {
+  try {
+    const key = getRecruiterViewModeStorageKey(email);
+    const saved = localStorage.getItem(key);
+    if (saved === 'table' || saved === 'grid') return saved;
+  } catch (e) {
+    console.warn('Unable to access localStorage for view mode:', e);
+  }
+  return 'grid'; // sensible default
+}
+
+function saveRecruiterViewMode(mode, email) {
+  try {
+    const key = getRecruiterViewModeStorageKey(email);
+    if (mode === 'table' || mode === 'grid') {
+      localStorage.setItem(key, mode);
+    }
+  } catch (e) {
+    console.warn('Unable to save view mode to localStorage:', e);
+  }
+}
+
+function syncViewModeButtons() {
+  const btnGrid = document.getElementById('btn-view-mode-grid');
+  const btnTable = document.getElementById('btn-view-mode-table');
+  if (!btnGrid || !btnTable) return;
+  if (jobDirFilters.viewMode === 'table') {
+    btnTable.style.background = 'var(--color-primary)';
+    btnTable.style.color = 'white';
+    btnTable.style.fontWeight = '700';
+    btnGrid.style.background = 'transparent';
+    btnGrid.style.color = 'var(--color-text-muted)';
+    btnGrid.style.fontWeight = '600';
+  } else {
+    btnGrid.style.background = 'var(--color-primary)';
+    btnGrid.style.color = 'white';
+    btnGrid.style.fontWeight = '700';
+    btnTable.style.background = 'transparent';
+    btnTable.style.color = 'var(--color-text-muted)';
+    btnTable.style.fontWeight = '600';
+  }
+}
+
 // Global caching and filter state for the Dedicated Job Openings Page
 let allHiringJobsCache = [];
 let jobDirFilters = {
@@ -5720,6 +6316,10 @@ async function loadJobOpeningsList() {
   const listContainer = document.getElementById('jobs-directory-list');
   const countPill = document.getElementById('jobs-count-pill');
   if (!listContainer) return;
+
+  // Restore recruiter-specific view mode preference
+  jobDirFilters.viewMode = loadRecruiterViewMode();
+  syncViewModeButtons();
 
   try {
     const res = await fetch('/api/v1/jobs');
@@ -5752,8 +6352,12 @@ async function loadJobOpeningsList() {
       });
     }
 
-    // Set initial baseline from localStorage or first job
-    if (!activeHiringJob && allHiringJobsCache.length > 0) {
+    // Set initial baseline from localStorage or first job if jobs exist
+    if (allHiringJobsCache.length === 0) {
+      activeHiringJob = null;
+      localStorage.removeItem('auditagent_active_job');
+      updateActiveJobDisplays(null);
+    } else if (!activeHiringJob) {
       const savedJobJson = localStorage.getItem('auditagent_active_job');
       if (savedJobJson) {
         try {
@@ -5766,7 +6370,7 @@ async function loadJobOpeningsList() {
       } else {
         setActiveJob(allHiringJobsCache[0]);
       }
-    } else if (activeHiringJob) {
+    } else {
       updateActiveJobDisplays(activeHiringJob);
     }
 
@@ -5786,7 +6390,47 @@ function renderJobOpeningsDirectory() {
   const listContainer = document.getElementById('jobs-directory-list');
   if (!listContainer) return;
 
-  // Filter
+  // Requirement 2.A: Empty State when no actual jobs exist
+  if (allHiringJobsCache.length === 0) {
+    listContainer.className = 'jobs-directory-grid';
+    listContainer.innerHTML = `
+      <div class="jobs-empty-state-card" id="jobs-empty-state-container" style="grid-column: 1 / -1; max-width: 680px; margin: 30px auto; padding: 44px 32px; text-align: center; background: var(--color-surface); border-radius: 16px; border: 1px dashed var(--color-border); box-shadow: var(--shadow-sm);">
+        <div style="width: 60px; height: 60px; margin: 0 auto 16px auto; border-radius: 50%; background: rgba(99,102,241,0.1); display: flex; align-items: center; justify-content: center; font-size: 1.9rem;">
+          💼
+        </div>
+        <h2 style="margin: 0 0 10px 0; font-size: 1.45rem; font-weight: 800; color: var(--color-text);">Create your first job</h2>
+        <p style="margin: 0 0 24px 0; font-size: 0.92rem; line-height: 1.6; color: var(--color-text-muted); max-width: 520px; margin-left: auto; margin-right: auto;">
+          Add a job description to generate requirements, configure your evaluation criteria, and begin screening candidates.
+        </p>
+        <div style="margin-bottom: 28px;">
+          <button type="button" class="btn-primary" id="btn-empty-create-first-job" style="padding: 11px 26px; font-size: 0.92rem; font-weight: 700; border-radius: 8px; box-shadow: 0 4px 14px rgba(99,102,241,0.35);">
+            + Create Your First Job
+          </button>
+        </div>
+        <div style="border-top: 1px solid var(--color-border); padding-top: 18px; text-align: left; background: var(--color-surface-hover); border-radius: 10px; padding: 16px 20px;">
+          <h4 style="margin: 0 0 8px 0; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.5px;">
+            What happens after job creation?
+          </h4>
+          <ul style="margin: 0; padding-left: 18px; font-size: 0.82rem; color: var(--color-text-muted); line-height: 1.6;">
+            <li><strong>Automatic Baseline Locking:</strong> Your first role is set as the active evaluation baseline.</li>
+            <li><strong>AI Requirements Extraction:</strong> Essential vs. preferred skills are cataloged instantly.</li>
+            <li><strong>Automated Assessment Generation:</strong> A tailored evaluation suite is drafted.</li>
+            <li><strong>Direct Candidate Screening:</strong> Proceed straight to resume evaluation and audit logs.</li>
+          </ul>
+        </div>
+      </div>
+    `;
+    document.getElementById('btn-empty-create-first-job')?.addEventListener('click', () => {
+      document.getElementById('tab-jobs-btn')?.click();
+    });
+
+    const pageInfo = document.getElementById('jobs-pagination-info');
+    if (pageInfo) pageInfo.textContent = 'Showing 0 Openings';
+    renderJobPaginationControls(1);
+    return;
+  }
+
+  // Filter with Multi-token fuzzy/field support
   const filtered = allHiringJobsCache.filter(job => {
     if (jobDirFilters.department && job.department !== jobDirFilters.department) return false;
     if (jobDirFilters.workModel && (job.work_model || '').toLowerCase() !== jobDirFilters.workModel.toLowerCase()) return false;
@@ -5797,12 +6441,14 @@ function renderJobOpeningsDirectory() {
       if (jobDirFilters.experience === 'senior' && exp < 5) return false;
     }
     if (jobDirFilters.searchQuery) {
-      const q = jobDirFilters.searchQuery.toLowerCase();
-      const matchTitle = (job.title || '').toLowerCase().includes(q);
-      const matchDept = (job.department || '').toLowerCase().includes(q);
-      const matchLoc = (job.location || '').toLowerCase().includes(q);
-      const matchJd = (job.raw_jd_text || '').toLowerCase().includes(q);
-      if (!matchTitle && !matchDept && !matchLoc && !matchJd) return false;
+      const reqStr = Array.isArray(job.required_skills) ? job.required_skills.join(' ') : (job.required_skills || '');
+      const prefStr = Array.isArray(job.preferred_skills) ? job.preferred_skills.join(' ') : (job.preferred_skills || '');
+      const skillsStr = Array.isArray(job.skills) ? job.skills.join(' ') : (job.skills || '');
+      const searchableText = `${job.title || ''} ${job.department || ''} ${job.location || ''} ${job.work_model || ''} ${reqStr} ${prefStr} ${skillsStr} ${job.raw_jd_text || ''} ${job.full_description || ''}`.toLowerCase();
+
+      const tokens = jobDirFilters.searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      const matchQuery = tokens.every(token => searchableText.includes(token));
+      if (!matchQuery) return false;
     }
     return true;
   });
@@ -6091,31 +6737,28 @@ function bindJobDirectoryControlsOnce() {
     renderJobOpeningsDirectory();
   });
 
-  // View Mode Switcher
+  // View Mode Switcher with Recruiter Persistence
   const btnGrid = document.getElementById('btn-view-mode-grid');
   const btnTable = document.getElementById('btn-view-mode-table');
   if (btnGrid && btnTable) {
     btnGrid.addEventListener('click', () => {
       jobDirFilters.viewMode = 'grid';
-      btnGrid.style.background = 'var(--color-primary)';
-      btnGrid.style.color = 'white';
-      btnGrid.style.fontWeight = '700';
-      btnTable.style.background = 'transparent';
-      btnTable.style.color = 'var(--color-text-muted)';
-      btnTable.style.fontWeight = '600';
+      saveRecruiterViewMode('grid');
+      syncViewModeButtons();
       renderJobOpeningsDirectory();
     });
     btnTable.addEventListener('click', () => {
       jobDirFilters.viewMode = 'table';
-      btnTable.style.background = 'var(--color-primary)';
-      btnTable.style.color = 'white';
-      btnTable.style.fontWeight = '700';
-      btnGrid.style.background = 'transparent';
-      btnGrid.style.color = 'var(--color-text-muted)';
-      btnGrid.style.fontWeight = '600';
+      saveRecruiterViewMode('table');
+      syncViewModeButtons();
       renderJobOpeningsDirectory();
     });
   }
+
+  // Fallback banner create job button
+  document.getElementById('btn-banner-no-baseline-create')?.addEventListener('click', () => {
+    document.getElementById('tab-jobs-btn')?.click();
+  });
 
   // Cross-page navigation buttons
   document.getElementById('btn-openings-create-job')?.addEventListener('click', () => {
@@ -6383,6 +7026,16 @@ async function showJobIntelligenceModal(jobId) {
 
     bodyEl.innerHTML = `
       <div class="jd-intelligence-card" id="modal-jd-intelligence" style="border: 1px solid var(--color-border); border-radius: 10px; padding: 16px; background: var(--color-surface-hover);">
+        <!-- Evaluation Transparency Callout (Section 4) -->
+        <div style="margin-bottom: 14px; padding: 12px 14px; border-radius: 8px; background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); display: flex; align-items: flex-start; gap: 10px;">
+          <span style="font-size: 1.15rem; line-height: 1;">⚖️</span>
+          <div style="font-size: 0.82rem; line-height: 1.5; color: var(--color-text);">
+            <strong>Evaluation Transparency:</strong>
+            <span style="color: #6366f1; font-weight: 700;">Mandatory requirements</span> are essential for role qualification and require verified resume evidence.
+            <span style="color: #06b6d4; font-weight: 700;">Preferred qualifications</span> strengthen candidate match scoring, but absence will <strong>never</strong> disqualify a candidate.
+          </div>
+        </div>
+
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--color-border); padding-bottom: 10px; flex-wrap: wrap; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 1.2rem;">💼</span>
@@ -6453,6 +7106,57 @@ async function showJobIntelligenceModal(jobId) {
     `;
 
     renderJobIntelligence(intel, 'modal');
+
+    // Wire modal footer action buttons
+    const btnBack = document.getElementById('btn-modal-intel-back');
+    const btnSetBaseline = document.getElementById('btn-modal-intel-set-baseline');
+    const btnScreen = document.getElementById('btn-modal-intel-screen');
+    const fullJob = allHiringJobsCache.find(j => j.id === jobId) || intel;
+    const isAlreadyBaseline = activeHiringJob && activeHiringJob.id === jobId;
+
+    if (btnBack) {
+      btnBack.onclick = () => {
+        modal.style.display = 'none';
+        const openingsTab = document.getElementById('tab-openings-btn');
+        if (openingsTab) openingsTab.click();
+      };
+    }
+
+    if (btnSetBaseline) {
+      if (isAlreadyBaseline) {
+        btnSetBaseline.textContent = '✓ Active Baseline';
+        btnSetBaseline.style.background = '#10b981';
+        btnSetBaseline.style.borderColor = '#10b981';
+        btnSetBaseline.disabled = true;
+      } else {
+        btnSetBaseline.textContent = '⭐ Set as Active Baseline';
+        btnSetBaseline.style.background = '';
+        btnSetBaseline.style.borderColor = '';
+        btnSetBaseline.disabled = false;
+        btnSetBaseline.onclick = () => {
+          setActiveJob(fullJob);
+          btnSetBaseline.textContent = '✓ Active Baseline';
+          btnSetBaseline.style.background = '#10b981';
+          btnSetBaseline.style.borderColor = '#10b981';
+          btnSetBaseline.disabled = true;
+          if (typeof showToast === 'function') {
+            showToast(`Active baseline set to: ${intel.title}`, 'success');
+          }
+        };
+      }
+    }
+
+    if (btnScreen) {
+      btnScreen.onclick = () => {
+        setActiveJob(fullJob);
+        modal.style.display = 'none';
+        if (typeof showToast === 'function') {
+          showToast(`Active screening baseline: ${intel.title}`, 'info');
+        }
+        const candBtn = document.getElementById('tab-candidates-btn') || document.getElementById('tab-single-btn');
+        if (candBtn) candBtn.click();
+      };
+    }
   } catch (err) {
     bodyEl.innerHTML = `
       <div style="padding: 24px; text-align: center; color: #ef4444;">
@@ -7142,6 +7846,35 @@ async function setupCandidateAssessmentSection(cand) {
       if (infoBox) infoBox.style.display = 'block';
       if (btnInvite) btnInvite.style.display = 'none';
 
+      // Email Delivery Bar Updates
+      const emailTextEl = document.getElementById('candidate-invite-email-text');
+      const emailBarEl = document.getElementById('candidate-email-delivery-bar');
+      const btnResendEmail = document.getElementById('btn-resend-candidate-email');
+      if (emailBarEl) emailBarEl.style.display = 'flex';
+      if (emailTextEl) {
+        emailTextEl.textContent = `Invitation dispatched to ${cand.email || 'candidate'} (OTP: ${candAssess.otp || '------'})`;
+      }
+      if (btnResendEmail) {
+        btnResendEmail.onclick = async () => {
+          btnResendEmail.textContent = 'Sending...';
+          btnResendEmail.disabled = true;
+          try {
+            const res = await fetch(`/api/v1/jobs/${jobId}/candidates/${cand.id}/resend-invite-email`, {
+              method: 'POST'
+            });
+            const rData = await res.json();
+            if (!res.ok) throw new Error(rData.detail || `HTTP ${res.status}`);
+            showToast(`✉️ Assessment invitation resent to ${cand.email || 'candidate'}!`, 'success');
+            btnResendEmail.textContent = 'Sent ✓';
+            setTimeout(() => { btnResendEmail.textContent = '📨 Resend Email'; btnResendEmail.disabled = false; }, 2500);
+          } catch (rErr) {
+            showToast(`Failed to resend email: ${rErr.message}`, 'error');
+            btnResendEmail.textContent = '📨 Resend Email';
+            btnResendEmail.disabled = false;
+          }
+        };
+      }
+
       if (candAssess.status === 'completed') {
         if (statePill) {
           statePill.textContent = 'Completed';
@@ -7155,6 +7888,20 @@ async function setupCandidateAssessmentSection(cand) {
         const totalTests = candAssess.total_coding_tests || (candAssess.coding_tests_passed != null ? candAssess.coding_tests_passed : 0);
         if (resCoding) resCoding.textContent = `${candAssess.coding_tests_passed || 0} / ${totalTests}`;
         if (resIntegrity) resIntegrity.textContent = `${candAssess.integrity_score || 100}%`;
+
+        // Wire up Dossier & PDF Export actions
+        const btnViewAudit = document.getElementById('btn-view-assessment-audit');
+        const btnExportPdf = document.getElementById('btn-export-assessment-pdf');
+        if (btnViewAudit) {
+          btnViewAudit.onclick = () => {
+            openCandidateAssessmentAuditModal(candAssess.id, cand.name || 'Candidate');
+          };
+        }
+        if (btnExportPdf) {
+          btnExportPdf.onclick = () => {
+            downloadCandidateAssessmentPdf(candAssess.id, cand.name || 'Candidate');
+          };
+        }
       } else {
         if (statePill) {
           statePill.textContent = 'Invited';
@@ -7202,7 +7949,8 @@ async function inviteCandidateToAssessment(cand) {
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
     const data = await res.json();
-    showToast(`Assessment invite generated! Access OTP: ${data.otp}`, 'success');
+    const recipient = (data.email_delivery && data.email_delivery.recipient) || cand.email || 'candidate';
+    showToast(`✉️ Assessment invitation dispatched to ${recipient}! (Access OTP: ${data.otp})`, 'success');
     setupCandidateAssessmentSection(cand);
   } catch (err) {
     showToast(`Failed to create invite: ${err.message}`, 'error');
@@ -7213,6 +7961,308 @@ async function inviteCandidateToAssessment(cand) {
     }
   }
 }
+
+// Candidate Assessment Scorecard & Proctoring Dossier Controller
+let currentAuditAssessmentId = null;
+let currentAuditCandidateName = null;
+
+async function openCandidateAssessmentAuditModal(assessmentId, candidateName) {
+  currentAuditAssessmentId = assessmentId;
+  currentAuditCandidateName = candidateName;
+
+  const modal = document.getElementById('modal-candidate-assessment-audit');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+
+  // Setup close handlers
+  const btnCloseX = document.getElementById('btn-close-audit-modal');
+  const btnCloseFooter = document.getElementById('btn-close-audit-modal-footer');
+  const closeModal = () => { modal.style.display = 'none'; };
+  if (btnCloseX) btnCloseX.onclick = closeModal;
+  if (btnCloseFooter) btnCloseFooter.onclick = closeModal;
+  modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+  // Setup PDF button
+  const btnModalDownloadPdf = document.getElementById('btn-modal-download-assessment-pdf');
+  if (btnModalDownloadPdf) {
+    btnModalDownloadPdf.onclick = () => {
+      downloadCandidateAssessmentPdf(currentAuditAssessmentId, currentAuditCandidateName);
+    };
+  }
+
+  // Setup tab toggles
+  const tabChallenges = document.getElementById('tab-audit-challenges');
+  const tabEval = document.getElementById('tab-audit-evaluation');
+  const tabProctor = document.getElementById('tab-audit-proctoring');
+  const paneChallenges = document.getElementById('pane-audit-challenges');
+  const paneEval = document.getElementById('pane-audit-evaluation');
+  const paneProctor = document.getElementById('pane-audit-proctoring');
+
+  const switchTab = (activeTab, activePane) => {
+    [tabChallenges, tabEval, tabProctor].forEach(t => {
+      if (t) {
+        t.style.borderBottomColor = 'transparent';
+        t.style.color = 'var(--color-text-muted)';
+      }
+    });
+    [paneChallenges, paneEval, paneProctor].forEach(p => {
+      if (p) p.style.display = 'none';
+    });
+    if (activeTab) {
+      activeTab.style.borderBottomColor = '#2563eb';
+      activeTab.style.color = '#2563eb';
+    }
+    if (activePane) activePane.style.display = 'block';
+  };
+
+  if (tabChallenges) tabChallenges.onclick = () => switchTab(tabChallenges, paneChallenges);
+  if (tabEval) tabEval.onclick = () => switchTab(tabEval, paneEval);
+  if (tabProctor) tabProctor.onclick = () => switchTab(tabProctor, paneProctor);
+
+  switchTab(tabChallenges, paneChallenges);
+
+  // Set loading state
+  const candNameEl = document.getElementById('audit-modal-candidate-name');
+  if (candNameEl) candNameEl.textContent = `${candidateName} — Assessment Dossier`;
+  const challengesContainer = document.getElementById('audit-challenges-container');
+  if (challengesContainer) {
+    challengesContainer.innerHTML = '<div style="padding: 32px; text-align: center; color: var(--color-text-muted);"><span>⏳</span> Loading assessment submission and proctoring telemetry...</div>';
+  }
+
+  try {
+    const token = localStorage.getItem('auditagent_jwt') || localStorage.getItem('auditagent_token') || '';
+    const orgId = localStorage.getItem('auditagent_org_id') || '';
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (orgId) headers['X-Organization-Id'] = orgId;
+
+    const res = await fetch(`/api/v1/assessments/${assessmentId}/proctor/audit`, { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    // 1. Header
+    if (candNameEl) candNameEl.textContent = `${data.candidate_name || candidateName} — Assessment Dossier`;
+    const roleSubEl = document.getElementById('audit-modal-role-subtitle');
+    if (roleSubEl) {
+      roleSubEl.textContent = `${data.job_title || 'Technical Role'} • ${data.assessment_title || 'Technical Assessment'}`;
+    }
+    const statusBadge = document.getElementById('audit-modal-status-badge');
+    if (statusBadge) {
+      if (data.is_disqualified) {
+        statusBadge.textContent = 'Disqualified (Cheat)';
+        statusBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+        statusBadge.style.color = '#ef4444';
+        statusBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      } else if (data.passed) {
+        statusBadge.textContent = 'Passed ✓ (70+)';
+        statusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+        statusBadge.style.color = '#10b981';
+        statusBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      } else {
+        statusBadge.textContent = 'Review Required';
+        statusBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+        statusBadge.style.color = '#f59e0b';
+        statusBadge.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+      }
+    }
+
+    // 2. KPIs
+    const kpiScore = document.getElementById('audit-kpi-score');
+    if (kpiScore) kpiScore.textContent = `${data.technical_score != null ? data.technical_score : 0} / 100`;
+    const kpiIntegrity = document.getElementById('audit-kpi-integrity');
+    if (kpiIntegrity) kpiIntegrity.textContent = `${data.integrity_score != null ? data.integrity_score : 100}%`;
+    const kpiStrikes = document.getElementById('audit-kpi-strikes');
+    if (kpiStrikes) kpiStrikes.textContent = `${data.strike_count || 0} of ${data.max_strikes || 3}`;
+    const kpiDur = document.getElementById('audit-kpi-duration');
+    if (kpiDur) kpiDur.textContent = `${data.duration_minutes || 30} mins`;
+    const kpiComp = document.getElementById('audit-kpi-completed-at');
+    if (kpiComp) {
+      kpiComp.textContent = data.completed_at ? new Date(data.completed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Completed';
+    }
+
+    // 3. Tab 1: Challenges & Code
+    const questions = data.questions || [];
+    const answers = data.answers || {};
+    const sandboxResults = data.sandbox_results || {};
+
+    const qCountEl = document.getElementById('audit-q-count');
+    if (qCountEl) qCountEl.textContent = questions.length;
+
+    if (challengesContainer) {
+      if (questions.length === 0) {
+        challengesContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--color-text-muted);">No question records found for this assessment.</div>';
+      } else {
+        challengesContainer.innerHTML = questions.map((q, idx) => {
+          const qId = q.id || String(idx + 1);
+          const qTitle = q.title || `Challenge ${idx + 1}`;
+          const qType = (q.type || 'code').toUpperCase();
+          const qPrompt = q.prompt || '';
+          const candAns = answers[qId] != null ? answers[qId] : (answers[String(idx + 1)] || '');
+          const sb = sandboxResults[qId] || {};
+
+          let resultBadge = '';
+          if (sb.total_tests) {
+            const isAllPassed = sb.tests_passed === sb.total_tests;
+            resultBadge = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: ${isAllPassed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${isAllPassed ? '#10b981' : '#ef4444'}; border: 1px solid ${isAllPassed ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'};">${sb.tests_passed}/${sb.total_tests} Tests Passed</span>`;
+          } else if (qType === 'MCQ') {
+            resultBadge = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #0284c7; border: 1px solid rgba(56, 189, 248, 0.3);">Conceptual MCQ</span>`;
+          } else {
+            resultBadge = `<span style="font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border);">Evaluated</span>`;
+          }
+
+          let answerContentHtml = '';
+          if (qType === 'MCQ') {
+            answerContentHtml = `
+              <div style="margin-top: 10px;">
+                <span style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Candidate Selected Answer:</span>
+                <div style="padding: 10px 14px; border-radius: 8px; background: var(--color-surface); border: 1px solid #3b82f6; color: #38bdf8; font-weight: 600; font-size: 0.88rem;">
+                  ${candAns ? escapeHtml(String(candAns)) : '<i>No option selected</i>'}
+                </div>
+              </div>
+            `;
+          } else {
+            const ansStr = typeof candAns === 'string' ? candAns : JSON.stringify(candAns, null, 2);
+            answerContentHtml = `
+              <div style="margin-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted);">Candidate Submitted Solution:</span>
+                  <span style="font-size: 0.72rem; color: var(--color-text-muted); font-family: monospace;">${ansStr.length} characters</span>
+                </div>
+                <pre style="margin: 0; background: #090d16; color: #38bdf8; padding: 14px; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; line-height: 1.5; overflow-x: auto; max-height: 260px; border: 1px solid #1e293b;"><code>${escapeHtml(ansStr || '# No code submitted.')}</code></pre>
+              </div>
+            `;
+          }
+
+          return `
+            <div style="background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                <div>
+                  <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em;">Question ${idx + 1} &bull; ${qType}</span>
+                  <h4 style="margin: 2px 0 0 0; font-size: 0.98rem; font-weight: 800; color: var(--color-text);">${escapeHtml(qTitle)}</h4>
+                </div>
+                ${resultBadge}
+              </div>
+              <p style="margin: 0 0 10px 0; font-size: 0.84rem; color: var(--color-text-muted); line-height: 1.45;">${escapeHtml(qPrompt)}</p>
+              ${answerContentHtml}
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // 4. Tab 2: AI Synthesis & Feedback
+    const summaryTextEl = document.getElementById('audit-eval-summary-text');
+    if (summaryTextEl) summaryTextEl.textContent = data.feedback || 'Candidate completed technical assessment evaluation.';
+    const strengthsList = document.getElementById('audit-strengths-list');
+    if (strengthsList) {
+      strengthsList.innerHTML = (data.strengths && data.strengths.length > 0)
+        ? data.strengths.map(s => `<li>${escapeHtml(s)}</li>`).join('')
+        : '<li>Demonstrated clear technical approach.</li>';
+    }
+    const weaknessesList = document.getElementById('audit-weaknesses-list');
+    if (weaknessesList) {
+      weaknessesList.innerHTML = (data.weaknesses && data.weaknesses.length > 0)
+        ? data.weaknesses.map(w => `<li>${escapeHtml(w)}</li>`).join('')
+        : '<li>No critical syntax or algorithmic errors flagged.</li>';
+    }
+
+    // 5. Tab 3: Proctoring Event Log
+    const logs = data.proctoring_logs || [];
+    const logCountEl = document.getElementById('audit-log-count');
+    if (logCountEl) logCountEl.textContent = logs.length;
+    const emptyLogEl = document.getElementById('audit-proctoring-empty');
+    const logListEl = document.getElementById('audit-proctoring-list');
+
+    if (logs.length === 0) {
+      if (emptyLogEl) emptyLogEl.style.display = 'block';
+      if (logListEl) logListEl.innerHTML = '';
+    } else {
+      if (emptyLogEl) emptyLogEl.style.display = 'none';
+      if (logListEl) {
+        logListEl.innerHTML = logs.map(ev => {
+          let icon = '⚠️';
+          let evColor = '#f59e0b';
+          let badgeText = 'Flagged';
+          if (ev.strike_added) {
+            icon = '🚫';
+            evColor = '#ef4444';
+            badgeText = 'Strike +1';
+          } else if (ev.event_type === 'fullscreen_exit') {
+            icon = '⛶';
+          } else if (ev.event_type === 'copy_paste_attempt') {
+            icon = '📋';
+          } else if (ev.event_type === 'audio_noise') {
+            icon = '🎙️';
+          }
+
+          let detailsText = '';
+          if (typeof ev.details === 'object' && ev.details !== null) {
+            detailsText = Object.entries(ev.details).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' • ');
+          } else {
+            detailsText = ev.details || 'Integrity check verification event';
+          }
+
+          return `
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--color-surface); border: 1px solid var(--color-border); border-left: 4px solid ${evColor}; border-radius: 8px;">
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <span style="font-size: 1.1rem; line-height: 1;">${icon}</span>
+                <div>
+                  <div style="font-weight: 700; font-size: 0.86rem; color: var(--color-text);">${escapeHtml(ev.event_type || 'Proctoring Event')}</div>
+                  <div style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 2px;">${escapeHtml(detailsText)}</div>
+                </div>
+              </div>
+              <div style="text-align: right; flex-shrink: 0;">
+                <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: ${ev.strike_added ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${evColor}; border: 1px solid ${ev.strike_added ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'};">
+                  ${badgeText}
+                </span>
+                <div style="font-size: 0.72rem; color: var(--color-text-muted); margin-top: 4px; font-family: monospace;">${ev.timestamp ? ev.timestamp.slice(-8) : ''}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+  } catch (err) {
+    if (challengesContainer) {
+      challengesContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444;">Failed to load assessment dossier: ${err.message}</div>`;
+    }
+  }
+}
+
+async function downloadCandidateAssessmentPdf(assessmentId, candidateName) {
+  if (!assessmentId) {
+    showToast('No assessment ID available for PDF export.', 'warning');
+    return;
+  }
+  showToast(`📥 Exporting Assessment & Proctoring PDF for ${candidateName}...`, 'info');
+  try {
+    const token = localStorage.getItem('auditagent_jwt') || localStorage.getItem('auditagent_token') || '';
+    const orgId = localStorage.getItem('auditagent_org_id') || '';
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (orgId) headers['X-Organization-Id'] = orgId;
+
+    const res = await fetch(`/api/v1/assessments/${assessmentId}/proctor/audit/pdf`, { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Assessment_Audit_${(candidateName || 'Candidate').replace(/\s+/g, '_')}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    showToast(`✓ PDF downloaded successfully!`, 'success');
+  } catch (err) {
+    showToast(`PDF download failed: ${err.message}`, 'error');
+  }
+}
+
+window.openCandidateAssessmentAuditModal = openCandidateAssessmentAuditModal;
+window.downloadCandidateAssessmentPdf = downloadCandidateAssessmentPdf;
 
 function initAssessmentBuilderEvents() {
   const btnGen = document.getElementById('btn-builder-generate-from-jd') || document.getElementById('btn-generate-from-jd');
@@ -7276,6 +8326,8 @@ if (document.readyState === 'loading') {
 
 window.loadJobAssessmentBuilder = loadJobAssessmentBuilder;
 window.setupCandidateAssessmentSection = setupCandidateAssessmentSection;
+window.openCandidateAssessmentAuditModal = openCandidateAssessmentAuditModal;
+window.downloadCandidateAssessmentPdf = downloadCandidateAssessmentPdf;
 
 // =========================================================================
 // TEST 7: FINAL JOB MATCH EVALUATION & EXPLAINABLE RECOMMENDATION

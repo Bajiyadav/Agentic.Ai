@@ -126,6 +126,13 @@ class BrowserVerificationRunner:
             self.record_fail("Title check", f"Unexpected title: {title}")
 
         # Check KPI cards rendered
+        await page.click("#tab-single-btn")
+        await page.wait_for_timeout(400)
+        toggle_btn = await page.query_selector("#btn-toggle-enterprise-overview")
+        if toggle_btn:
+            await toggle_btn.click()
+            await page.wait_for_timeout(300)
+
         kpi_bar = await page.query_selector("#dashboard-kpi-bar")
         if kpi_bar and await kpi_bar.is_visible():
             self.record_pass("Dashboard KPI bar is visible")
@@ -167,6 +174,9 @@ class BrowserVerificationRunner:
         print("\n[3] Testing Valid Resume Screening Journey...")
         valid_pdf = FIXTURES_DIR / "resumes" / "valid_backend_engineer.pdf"
         assert valid_pdf.exists(), f"Missing {valid_pdf}"
+
+        await page.click("#tab-single-btn")
+        await page.wait_for_timeout(400)
 
         # Set file input
         file_input = await page.query_selector("#resume-input")
@@ -315,7 +325,7 @@ class BrowserVerificationRunner:
             modal = await page.query_selector("#draft-modal")
             modal_visible = await modal.is_visible()
             modal_title = await page.text_content("#modal-draft-title")
-            if modal_visible and ("Resubmission" in modal_title or "Notice" in modal_title or "Resume" in modal_title):
+            if modal_visible and ("Resubmission" in modal_title or "Notice" in modal_title or "Resume" in modal_title or "Response" in modal_title):
                 self.record_pass(f"Draft modal opened with title: '{modal_title.strip()}'")
                 # Close modal
                 btn_close = await page.query_selector("#btn-close-modal")

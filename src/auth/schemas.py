@@ -54,3 +54,19 @@ class TenantContext(BaseModel):
     user_id: uuid.UUID
     user_email: str
     role: str  # owner, admin, recruiter, hiring_manager, viewer
+
+class OnboardingStatePayload(BaseModel):
+    email: Optional[str] = None
+    user_id: Optional[str] = None
+    dismissed: bool = False
+    audit_reviewed: bool = False
+    completed: bool = False
+    completed_steps: List[str] = []
+
+class OnboardingStateResponse(BaseModel):
+    user_id: str
+    user_email: str
+    dismissed: bool = False
+    audit_reviewed: bool = False
+    completed: bool = False
+    completed_steps: List[str] = []

@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 import logging
 import hashlib
 from datetime import datetime, timezone
@@ -41,6 +42,7 @@ from src.services.proctoring_service import ProctoringService, ProctorTelemetryP
 from src.services.job_match_evaluation_service import JobMatchEvaluationService
 from src.services.evidence_graph_service import CandidateEvidenceGraphService
 from src.services.interview_service import TechnicalInterviewService
+from src.services.email_service import AssessmentEmailService
 
 logger = logging.getLogger("auditagent.platform_router")
 
@@ -1772,6 +1774,21 @@ async def invite_candidate_to_job_assessment(
         await db.refresh(cand_ass)
 
     invite_url = build_assessment_invite_url(cand_ass.id, cand_ass.access_token, request=request)
+
+    # Automated Candidate Email Dispatch
+    cand_name = getattr(cand, "name", None) or getattr(cand, "full_name", None) or "Candidate"
+    company_name = getattr(tenant, "organization_name", None) or getattr(tenant, "company_name", None) or "Acme Corporation"
+    email_delivery = AssessmentEmailService.send_assessment_invitation(
+        candidate_name=cand_name,
+        candidate_email=cand.email or f"candidate_{cand.id.hex[:6]}@example.com",
+        job_title=job.title,
+        assessment_title=job_ass.title or "Technical Assessment",
+        invite_url=invite_url,
+        otp_code=cand_ass.otp_code,
+        duration_minutes=cand_ass.duration_minutes or 45,
+        company_name=company_name
+    )
+
     return {
         "assessment_id": str(cand_ass.id),
         "job_id": str(job.id),
@@ -1784,7 +1801,80 @@ async def invite_candidate_to_job_assessment(
         "otp_code": cand_ass.otp_code,
         "otp": cand_ass.otp_code,
         "status": cand_ass.status,
-        "duration_minutes": cand_ass.duration_minutes
+        "duration_minutes": cand_ass.duration_minutes,
+        "email_delivery": email_delivery
+    }
+
+
+_resend_cooldowns: Dict[str, float] = {}
+
+@router.post("/jobs/{job_id}/candidates/{candidate_id}/resend-invite-email")
+async def resend_candidate_job_assessment_email(
+    job_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant: TenantContext = Depends(get_tenant_or_demo_context)
+):
+    """Resends the assessment invitation email with current OTP code and portal link."""
+    j_stmt = select(JobOpening).where(JobOpening.id == job_id, JobOpening.organization_id == tenant.organization_id)
+    j_res = await db.execute(j_stmt)
+    job = j_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job opening not found.")
+
+    c_stmt = select(Candidate).where(Candidate.id == candidate_id, Candidate.organization_id == tenant.organization_id)
+    c_res = await db.execute(c_stmt)
+    cand = c_res.scalar_one_or_none()
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    ca_stmt = select(CandidateAssessment).where(
+        CandidateAssessment.candidate_id == candidate_id,
+        CandidateAssessment.job_id == job_id,
+        CandidateAssessment.organization_id == tenant.organization_id
+    )
+    ca_res = await db.execute(ca_stmt)
+    cand_ass = ca_res.scalar_one_or_none()
+    if not cand_ass or not cand_ass.access_token:
+        raise HTTPException(status_code=400, detail="Candidate has not been invited to an assessment yet.")
+
+    # Rate Limiting: Prevent spam flooding / quota exhaustion on rapid consecutive resends
+    now_ts = time.time()
+    last_sent = _resend_cooldowns.get(str(cand_ass.id), 0)
+    if last_sent > 0 and (now_ts - last_sent) < 30:
+        remaining = int(30 - (now_ts - last_sent))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Please wait {remaining}s before requesting another invitation email."
+        )
+    _resend_cooldowns[str(cand_ass.id)] = now_ts
+
+    a_stmt = select(JobAssessment).where(JobAssessment.id == cand_ass.assessment_id)
+    a_res = await db.execute(a_stmt)
+    job_ass = a_res.scalar_one_or_none()
+    ass_title = job_ass.title if job_ass else "Technical Assessment"
+
+    invite_url = build_assessment_invite_url(cand_ass.id, cand_ass.access_token, request=request)
+    cand_name = getattr(cand, "name", None) or getattr(cand, "full_name", None) or "Candidate"
+    company_name = getattr(tenant, "organization_name", None) or getattr(tenant, "company_name", None) or "Acme Corporation"
+    email_delivery = AssessmentEmailService.send_assessment_invitation(
+        candidate_name=cand_name,
+        candidate_email=cand.email or f"candidate_{cand.id.hex[:6]}@example.com",
+        job_title=job.title,
+        assessment_title=ass_title,
+        invite_url=invite_url,
+        otp_code=cand_ass.otp_code,
+        duration_minutes=cand_ass.duration_minutes or 45,
+        company_name=company_name
+    )
+
+    return {
+        "status": "resent",
+        "email_delivery": email_delivery,
+        "recipient": cand.email,
+        "otp_code": cand_ass.otp_code,
+        "invite_url": invite_url
     }
 
 
@@ -2008,8 +2098,49 @@ async def verify_candidate_otp(
         raise HTTPException(status_code=404, detail="Assessment not found.")
     ass, cand = row
 
+    # Security: Status Check (Immutability & Enforcement)
+    if ass.status == "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="This assessment has already been completed and submitted."
+        )
+    if ass.status == "integrity_disqualified":
+        raise HTTPException(
+            status_code=403,
+            detail="This assessment was terminated due to proctoring integrity violations."
+        )
+
+    # Security: Brute-Force Passcode Lockout Check
+    if ProctoringService.is_passcode_locked(ass):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed passcode attempts. Assessment access locked. Please contact your recruiter."
+        )
+
+    # Verify credentials against token or OTP with expiration check
     if not ProctoringService.verify_credentials(ass, req.otp_or_token):
-        raise HTTPException(status_code=401, detail="Invalid or expired OTP / Access Token.")
+        # Record failed attempt in proctoring audit log
+        logs = list(ass.proctoring_logs or [])
+        logs.append({
+            "event_type": "failed_otp_attempt",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "details": "Invalid or expired passcode/token entered"
+        })
+        ass.proctoring_logs = logs
+        await db.commit()
+        await db.refresh(ass)
+
+        failed_count = ProctoringService.get_failed_otp_count(ass)
+        if failed_count >= ProctoringService.MAX_FAILED_OTP_ATTEMPTS:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many failed passcode attempts. Assessment access locked. Please contact your recruiter."
+            )
+        remaining = ProctoringService.MAX_FAILED_OTP_ATTEMPTS - failed_count
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid or expired OTP / Access Token. {remaining} attempts remaining."
+        )
 
     # Activate assessment if pending or invited
     if ass.status in ("pending", "invited"):
@@ -2111,8 +2242,13 @@ async def get_candidate_assessment_view(
         }
     ass, cand, job = row
 
-    # Validate token if set
-    if token and not ProctoringService.verify_credentials(ass, token):
+    # Security: Mandatory Token Verification
+    if ass.access_token:
+        if not token:
+            raise HTTPException(status_code=401, detail="Valid access token is required to view this assessment.")
+        if not ProctoringService.verify_credentials(ass, token):
+            raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+    elif token and not ProctoringService.verify_credentials(ass, token):
         raise HTTPException(status_code=401, detail="Invalid or expired access token.")
 
     # Select question source: role-specific override or saved assessment questions
@@ -2320,11 +2456,32 @@ async def candidate_submit_assessment(
     if not ass:
         raise HTTPException(status_code=404, detail="Assessment not found.")
 
-    if req.token and not ProctoringService.verify_credentials(ass, req.token):
-        raise HTTPException(status_code=401, detail="Invalid access token.")
+    # Security: Mandatory Token Verification
+    if not req.token:
+        raise HTTPException(
+            status_code=401,
+            detail="Valid access token is required to submit this assessment."
+        )
+    if not ProctoringService.verify_credentials(ass, req.token):
+        raise HTTPException(status_code=401, detail="Invalid or expired access token.")
+
+    # Security: Double-Submission Immutability Check
+    if ass.status == "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="Assessment has already been submitted and completed. Score is immutable."
+        )
+    if ass.status == "integrity_disqualified":
+        raise HTTPException(
+            status_code=403,
+            detail="Assessment was auto-terminated due to integrity violations and cannot be submitted."
+        )
 
     ass_svc = AssessmentService(db, ass.organization_id)
-    graded = await ass_svc.evaluate_submission(ass.id, req.answers)
+    try:
+        graded = await ass_svc.evaluate_submission(ass.id, req.answers)
+    except ValueError as val_err:
+        raise HTTPException(status_code=409, detail=str(val_err))
     return {
         "id": str(graded.id),
         "score": graded.score,
@@ -2406,9 +2563,11 @@ async def get_assessment_proctor_audit(
     db: AsyncSession = Depends(get_db),
     tenant: TenantContext = Depends(get_tenant_or_demo_context)
 ):
-    """Recruiter audit report of proctoring violations, strikes, timeline, and snapshots."""
-    stmt = select(CandidateAssessment, Candidate).join(
+    """Recruiter audit report of technical submissions, questions, test results, strikes, and proctoring logs."""
+    stmt = select(CandidateAssessment, Candidate, JobOpening).join(
         Candidate, CandidateAssessment.candidate_id == Candidate.id
+    ).outerjoin(
+        JobOpening, CandidateAssessment.job_id == JobOpening.id
     ).where(
         CandidateAssessment.id == assessment_id,
         CandidateAssessment.organization_id == tenant.organization_id
@@ -2417,26 +2576,109 @@ async def get_assessment_proctor_audit(
     row = res.first()
     if not row:
         raise HTTPException(status_code=404, detail="Assessment not found.")
-    ass, cand = row
+    ass, cand, job = row
+
+    job_title = job.title if job else "Technical Engineer"
+    assessment_title = f"{job_title} Assessment"
+    passed = (ass.score or 0) >= 70 and ass.status != "integrity_disqualified"
 
     return {
         "assessment_id": str(ass.id),
         "candidate_id": str(cand.id),
         "candidate_name": cand.name,
         "candidate_email": cand.email,
+        "job_title": job_title,
+        "assessment_title": assessment_title,
+        "duration_minutes": ass.duration_minutes,
         "status": ass.status,
         "technical_score": ass.score,
+        "score": ass.score,
+        "passed": passed,
         "integrity_score": ass.integrity_score,
         "strike_count": ass.strike_count,
         "max_strikes": ass.max_strikes,
         "is_disqualified": ass.status == "integrity_disqualified",
         "disqualification_reason": ass.disqualification_reason,
+        "strengths": ass.strengths or [],
+        "weaknesses": ass.weaknesses or [],
+        "feedback": ass.feedback or "",
+        "questions": ass.questions_json or [],
+        "answers": ass.answers_json or {},
         "proctoring_logs": ass.proctoring_logs or [],
+        "proctoring_events": ass.proctoring_logs or [],
         "snapshots": ass.snapshots_json or [],
         "sandbox_results": ass.sandbox_results or {},
         "created_at": ass.created_at.isoformat(),
         "completed_at": ass.completed_at.isoformat() if ass.completed_at else None
     }
+
+
+@router.get("/assessments/{assessment_id}/proctor/audit/pdf")
+async def export_assessment_proctor_audit_pdf(
+    assessment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant: TenantContext = Depends(get_tenant_or_demo_context)
+):
+    """Generates an executive-grade downloadable PDF assessment & proctoring dossier."""
+    stmt = select(CandidateAssessment, Candidate, JobOpening).join(
+        Candidate, CandidateAssessment.candidate_id == Candidate.id
+    ).outerjoin(
+        JobOpening, CandidateAssessment.job_id == JobOpening.id
+    ).where(
+        CandidateAssessment.id == assessment_id,
+        CandidateAssessment.organization_id == tenant.organization_id
+    )
+    res = await db.execute(stmt)
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Assessment not found.")
+    ass, cand, job = row
+
+    job_title = job.title if job else "Technical Engineer"
+    assessment_title = f"{job_title} Assessment"
+    passed = (ass.score or 0) >= 70 and ass.status != "integrity_disqualified"
+
+    audit_payload = {
+        "assessment_id": str(ass.id),
+        "candidate_id": str(cand.id),
+        "candidate_name": cand.name or "Candidate",
+        "candidate_email": cand.email or "",
+        "job_title": job_title,
+        "assessment_title": assessment_title,
+        "duration_minutes": ass.duration_minutes,
+        "status": ass.status,
+        "technical_score": ass.score if ass.score is not None else 0,
+        "passed": passed,
+        "integrity_score": ass.integrity_score,
+        "strike_count": ass.strike_count,
+        "max_strikes": ass.max_strikes,
+        "is_disqualified": ass.status == "integrity_disqualified",
+        "disqualification_reason": ass.disqualification_reason,
+        "strengths": ass.strengths or [],
+        "weaknesses": ass.weaknesses or [],
+        "feedback": ass.feedback or "",
+        "questions": ass.questions_json or [],
+        "answers": ass.answers_json or {},
+        "proctoring_logs": ass.proctoring_logs or [],
+        "sandbox_results": ass.sandbox_results or {},
+        "created_at": ass.created_at.isoformat() if ass.created_at else None,
+        "completed_at": ass.completed_at.isoformat() if ass.completed_at else None
+    }
+
+    from src.services.pdf_export_service import ExecutiveScorecardPdfService
+    pdf_bytes = ExecutiveScorecardPdfService.generate_assessment_audit_pdf(audit_payload)
+
+    clean_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", cand.name or "Candidate")
+    filename = f"Assessment_Audit_{clean_name}_{str(ass.id)[:8]}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": "application/pdf"
+        }
+    )
 
 
 class RestartAssessmentRequest(BaseModel):

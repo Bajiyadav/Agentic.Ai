@@ -47,10 +47,10 @@ async def run_verification():
         print("1. Navigating to http://localhost:8000...")
         await page.goto("http://localhost:8000", wait_until="networkidle")
 
-        # Step 2: Switch to Jobs tab
-        print("2. Switching to Jobs view...")
-        await page.click("#tab-jobs-btn")
-        await page.wait_for_selector("#view-jobs", state="visible")
+        # Step 2: Switch to Openings tab
+        print("2. Switching to Openings view...")
+        await page.click("#tab-openings-btn")
+        await page.wait_for_selector("#view-job-openings", state="visible")
         await page.wait_for_timeout(1000)
 
         # Step 3: Check Active Job Openings list
@@ -77,6 +77,9 @@ async def run_verification():
 
         # Step 6: Create new job to verify inline confirmation intelligence
         print("6. Submitting new job with full JD...")
+        await page.click("#tab-jobs-btn")
+        await page.wait_for_selector("#view-jobs", state="visible")
+        await page.wait_for_timeout(500)
         await page.fill("#job-create-title", "Senior Site Reliability Engineer")
         await page.fill("#job-create-dept", "Cloud Infrastructure")
         await page.fill("#job-create-loc", "Seattle, WA / Remote")

@@ -50,15 +50,37 @@ class ProctoringService:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
         return token, otp, expires_at
 
+    MAX_FAILED_OTP_ATTEMPTS = 5
+
+    @classmethod
+    def get_failed_otp_count(cls, assessment: CandidateAssessment) -> int:
+        """Returns the number of failed passcode/OTP verification attempts."""
+        logs = assessment.proctoring_logs or []
+        return sum(1 for log in logs if isinstance(log, dict) and log.get("event_type") == "failed_otp_attempt")
+
+    @classmethod
+    def is_passcode_locked(cls, assessment: CandidateAssessment) -> bool:
+        """Checks if assessment passcode verification is locked due to >= 5 failed attempts."""
+        return cls.get_failed_otp_count(assessment) >= cls.MAX_FAILED_OTP_ATTEMPTS
+
     @staticmethod
     def verify_credentials(
         assessment: CandidateAssessment,
         provided_otp_or_token: str
     ) -> bool:
-        """Verifies 6-digit OTP code or secret access token."""
+        """Verifies 6-digit OTP code or secret access token with strict expiration enforcement."""
         val = (provided_otp_or_token or "").strip()
         if not val:
             return False
+
+        # Universal expiration check for both tokens and passcodes
+        if assessment.otp_expires_at:
+            now = datetime.now(timezone.utc)
+            exp = assessment.otp_expires_at
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if now > exp:
+                return False
 
         # Check token match
         if assessment.access_token and assessment.access_token == val:
@@ -66,13 +88,6 @@ class ProctoringService:
 
         # Check OTP match
         if assessment.otp_code and assessment.otp_code == val:
-            if assessment.otp_expires_at:
-                now = datetime.now(timezone.utc)
-                exp = assessment.otp_expires_at
-                if exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=timezone.utc)
-                if now > exp:
-                    return False
             return True
 
         return False
@@ -137,15 +152,8 @@ class ProctoringService:
                 pass
 
         # 2. Local vision heuristic analysis:
-        # Check payload metadata or synthetic verification tags if passed
-        # If image bytes are very small (e.g. blacked out frame < 1KB)
-        try:
-            raw_bytes = base64.b64decode(clean_b64)
-            if len(raw_bytes) < 800:
-                return True, "camera_occluded", "Webcam feed appears completely blank or covered."
-        except Exception:
-            pass
-
+        # If candidate has a simulated feed, is thinking still, or camera is adjusting, do NOT falsely penalize.
+        # Strict violations (like multiple faces or looking away) require confirmed AI analysis.
         return False, None, None
 
     @classmethod
@@ -202,15 +210,16 @@ class ProctoringService:
 
         # 2. Check Audio Telemetry
         elif (payload.audio_level_rms or 0.0) > cls.AUDIO_VOICE_THRESHOLD:
-            # Check if prolonged or excessive noise
-            if (payload.audio_level_rms or 0.0) > 0.75:
+            # Ambient background noise (fans, keyboard typing, breath) should issue gentle warnings, NOT strikes
+            if (payload.audio_level_rms or 0.0) >= 0.85:
                 strike_added = True
                 violation_type = "voice_activity"
                 detail_msg = f"High audio/conversation volume detected (RMS: {payload.audio_level_rms:.2f})."
                 warning_msg = "Human speech or loud background conversation detected."
             else:
-                detail_msg = f"Elevated audio level detected (RMS: {payload.audio_level_rms:.2f})."
-                warning_msg = "Elevated sound detected. Please maintain quiet environment."
+                # Advisory warning only, no strike added for ambient room noise
+                detail_msg = f"Ambient noise detected (RMS: {payload.audio_level_rms:.2f})."
+                warning_msg = "Elevated ambient sound detected. Please maintain quiet environment."
 
         # 3. Check Vision Snapshot
         if not strike_added and payload.snapshot_base64:

@@ -27,11 +27,12 @@ def upgrade() -> None:
         sa.Column('snapshots_json', sa.JSON(), server_default='[]', nullable=False),
         sa.Column('sandbox_results', sa.JSON(), server_default='{}', nullable=False),
     ]
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing_cols = {c['name'] for c in insp.get_columns('candidate_assessments')}
     for col in cols:
-        try:
+        if col.name not in existing_cols:
             op.add_column('candidate_assessments', col)
-        except Exception:
-            pass
 
 def downgrade() -> None:
     cols = [
@@ -39,8 +40,9 @@ def downgrade() -> None:
         'max_strikes', 'disqualification_reason', 'proctoring_logs',
         'integrity_score', 'snapshots_json', 'sandbox_results'
     ]
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing_cols = {c['name'] for c in insp.get_columns('candidate_assessments')}
     for c in cols:
-        try:
+        if c in existing_cols:
             op.drop_column('candidate_assessments', c)
-        except Exception:
-            pass

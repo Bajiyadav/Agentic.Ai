@@ -37,9 +37,12 @@
         </button>
 
         <div class="nav-section-title">Hiring</div>
-        <button class="tab-btn" id="tab-openings-btn">
+        <button class="tab-btn" id="tab-openings-btn" title="Job Openings">
           <span class="tab-icon">💼</span>
-          <span class="tab-label">Job Openings</span>
+          <span class="tab-label" style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25;">
+            <span>Job Openings</span>
+            <span class="sidebar-active-job-indicator" id="sidebar-active-job-role" style="display: none; font-size: 0.67rem; color: #10b981; font-weight: 700; max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Active: -</span>
+          </span>
           <span class="tab-badge" id="tab-openings-badge" style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid #10b981;">Openings</span>
         </button>
         <button class="tab-btn" id="tab-jobs-btn">
@@ -151,12 +154,15 @@
           <button type="button" class="btn-topbar-action" id="btn-topbar-action" style="background: #2563eb; color: #ffffff; font-weight: 600; border: none;" onclick="document.getElementById('tab-single-btn').click()">
             <span>⚡</span> + New Audit
           </button>
-          <a href="/assessment.html?id=80290eef-b6a4-4366-a46d-219c9d4c255f&token=TXY8Eui64vZyfGNB3gT7wYqSTWNCIRIR" target="_blank" class="btn-topbar-action" id="topbar-real-assessment-link" title="Open Real Candidate Assessment Sandbox" style="background: #059669; color: #ffffff; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; border: none;">
+          <a href="/assessment.html" target="_blank" class="btn-topbar-action" id="topbar-real-assessment-link" title="Open Live Candidate Assessment Portal" style="background: #059669; color: #ffffff; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; border: none;">
             <span>📹</span>
-            <span class="assessment-full-label">Real Assessment Link</span>
-            <span class="assessment-short-label">Assessment</span>
+            <span class="assessment-full-label">Live Candidate Exam Portal</span>
+            <span class="assessment-short-label">Exam Portal</span>
             <span>↗</span>
           </a>
+          <button type="button" class="btn-theme-toggle" id="btn-theme-toggle" title="Switch Theme" aria-label="Toggle Theme">
+            <span class="theme-icon-display">🌙</span>
+          </button>
 
           <!-- Recruiter User Profile Badge -->
           <div class="user-profile-badge" id="btn-topbar-user-badge" title="Recruiter Account">
@@ -174,6 +180,9 @@
               </div>
               <button type="button" class="user-dropdown-btn" id="btn-topbar-edit-profile" style="color: var(--color-primary); font-weight: 700;">
                 <span>✏️</span> Edit Profile
+              </button>
+              <button type="button" class="user-dropdown-btn" id="btn-dropdown-onboarding" onclick="window.openOnboardingGuide && window.openOnboardingGuide(); document.getElementById('topbar-user-dropdown').style.display='none';">
+                <span>📋</span> Onboarding Guide Checklist
               </button>
               <button type="button" class="user-dropdown-btn" id="btn-switch-sarah">
                 <span>👤</span> Switch to Sarah (Recruiter)
@@ -201,14 +210,17 @@
         <!-- Greeting & Microcopy Header -->
         <div class="hr-greeting-header">
           <div>
-            <h1 class="hr-greeting-title" id="hr-greeting-name">Good morning, Sarah 👋</h1>
-            <p class="hr-greeting-sub">Here's what needs your attention today.</p>
+            <h1 class="hr-greeting-title" id="hr-greeting-name">Welcome back, Sarah 👋</h1>
+            <p class="hr-greeting-sub" id="hr-greeting-subtitle">Here's what's happening across your hiring pipeline.</p>
             <div class="rotating-microcopy-ticker">
               <span class="microcopy-icon">💡</span>
               <span class="microcopy-text" id="hr-rotating-quote">Good hiring decisions are built on evidence.</span>
             </div>
           </div>
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn-text-sm" id="btn-reopen-onboarding" style="display: none; padding: 8px 14px; font-weight: 700; font-size: 0.82rem; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-primary); cursor: pointer;" title="Reopen Onboarding Checklist">
+              <span>📋</span> Onboarding Guide
+            </button>
             <button type="button" class="btn-primary" id="btn-home-create-job" style="padding: 10px 18px; font-weight: 700; font-size: 0.86rem; display: flex; align-items: center; gap: 6px;">
               <span>💼</span> + Create Job
             </button>
@@ -218,61 +230,95 @@
           </div>
         </div>
 
-        <!-- 3-Step Guided Screener Hero Card on Home -->
-        <div class="hr-guided-quickstart-card" id="home-guided-quickstart" style="margin-bottom: 22px; padding: 22px 26px; border-radius: 16px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(6, 182, 212, 0.08)); border: 1px solid rgba(99, 102, 241, 0.35); box-shadow: 0 4px 20px rgba(99, 102, 241, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 18px;">
-          <div style="max-width: 640px;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-              <span class="badge-pill" style="background: #4f46e5; color: #ffffff; font-weight: 800; font-size: 0.72rem; padding: 3px 10px; border-radius: 9999px;">GUIDED WORKFLOW</span>
-              <span style="font-size: 0.84rem; font-weight: 700; color: #4f46e5;">3-Step Candidate Verification</span>
+        <!-- First-Time Recruiter Onboarding Checklist -->
+        <div class="hr-onboarding-card" id="hr-onboarding-container" style="display: none;">
+          <button type="button" class="btn-dismiss-onboarding" id="btn-dismiss-onboarding" title="Dismiss onboarding">✕ Dismiss</button>
+          
+          <div class="onboarding-header-wrap">
+            <div>
+              <h2 class="onboarding-title">
+                <span>👋</span> Welcome to AuditAgent.ai
+              </h2>
+              <p class="onboarding-subtitle">Let's get your hiring workspace ready.</p>
             </div>
-            <h3 style="margin: 0 0 6px 0; font-size: 1.28rem; font-weight: 800; color: var(--color-text);">Screen Candidates in 3 Clear Steps</h3>
-            <p style="margin: 0; font-size: 0.86rem; color: var(--color-text-muted); line-height: 1.55;">
-              <strong>Step 1:</strong> Select role &amp; upload resume &bull; <strong>Step 2:</strong> View verified skills &amp; GitHub code proof &bull; <strong>Step 3:</strong> Send coding challenge or make final hiring decision.
-            </p>
+            
+            <div class="onboarding-progress-wrap">
+              <div class="onboarding-progress-meta">
+                <span class="onboarding-progress-label" id="onboarding-progress-text">0 of 3 completed</span>
+              </div>
+              <div class="onboarding-progress-track">
+                <div class="onboarding-progress-fill" id="onboarding-progress-bar" style="width: 0%;"></div>
+              </div>
+            </div>
           </div>
-          <div>
-            <button type="button" class="btn-primary" id="btn-quick-start-wizard" style="padding: 13px 26px; font-weight: 800; font-size: 0.95rem; background: linear-gradient(135deg, #4f46e5, #06b6d4); border: none; border-radius: 12px; color: #ffffff; box-shadow: 0 4px 16px rgba(79, 70, 229, 0.4); cursor: pointer; display: flex; align-items: center; gap: 8px; transition: transform 0.2s ease;">
-              <span>⚡</span> Start Candidate Audit (Step 1) <span>➔</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- First-Time HR Lightweight Onboarding Banner -->
-        <div class="hr-onboarding-card" id="hr-onboarding-banner" style="display: none;">
-          <button type="button" class="btn-dismiss-onboarding" id="btn-dismiss-onboarding" title="Dismiss onboarding">✕</button>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-            <span style="font-size: 1.25rem;">👋</span>
-            <h3 style="margin: 0; font-size: 1.12rem; font-weight: 800; color: var(--color-text);">Welcome to AuditAgent</h3>
-            <span class="badge-pill" style="background: rgba(99,102,241,0.15); color: var(--color-primary); font-size: 0.7rem; font-weight: 700;">Get Started</span>
-          </div>
-          <p style="margin: 0 0 12px 0; font-size: 0.86rem; color: var(--color-text-muted);">
-            Let's get your first role ready. AuditAgent analyzes requirements, audits public evidence, and recommends with explainability.
-          </p>
 
           <div class="onboarding-steps-grid">
-            <div class="onboarding-step-box">
-              <span class="onboarding-step-num">Step 01</span>
-              <div class="onboarding-step-title">Create your Job</div>
-              <p class="onboarding-step-desc">Tell AuditAgent what you're hiring for. We extract required vs preferred skills with zero hallucination.</p>
+            <!-- Step 1: Create your first job -->
+            <div class="onboarding-step-box" id="onboarding-step-box-1">
+              <div class="onboarding-step-top">
+                <span class="onboarding-step-num">Step 01</span>
+                <span class="onboarding-step-badge pending" id="onboarding-step-badge-1">Pending</span>
+              </div>
+              <h3 class="onboarding-step-title">Create your first job</h3>
+              <p class="onboarding-step-desc">
+                Add a job description so AuditAgent.ai knows which skills, qualifications, and requirements to evaluate.
+              </p>
+              <div class="onboarding-step-action-wrap">
+                <button type="button" class="btn-primary btn-onboarding-step" id="btn-onboarding-step-1">
+                  <span>💼</span> Create a Job
+                </button>
+              </div>
             </div>
-            <div class="onboarding-step-box">
-              <span class="onboarding-step-num">Step 02</span>
-              <div class="onboarding-step-title">Add candidates</div>
-              <p class="onboarding-step-desc">Upload resumes and review technical evidence verified against real GitHub commits and code quality.</p>
+
+            <!-- Step 2: Screen your first candidate -->
+            <div class="onboarding-step-box" id="onboarding-step-box-2">
+              <div class="onboarding-step-top">
+                <span class="onboarding-step-num">Step 02</span>
+                <span class="onboarding-step-badge pending" id="onboarding-step-badge-2">Pending</span>
+              </div>
+              <h3 class="onboarding-step-title">Screen your first candidate</h3>
+              <p class="onboarding-step-desc">
+                Upload a candidate's resume and start the evidence-based screening process.
+              </p>
+              <div class="onboarding-step-action-wrap">
+                <button type="button" class="btn-primary btn-onboarding-step" id="btn-onboarding-step-2">
+                  <span>⚡</span> Screen a Candidate
+                </button>
+              </div>
             </div>
-            <div class="onboarding-step-box">
-              <span class="onboarding-step-num">Step 03</span>
-              <div class="onboarding-step-title">Make decisions</div>
-              <p class="onboarding-step-desc">Compare evidence and decide who moves forward with full recruiter override authority.</p>
+
+            <!-- Step 3: Review the candidate audit -->
+            <div class="onboarding-step-box" id="onboarding-step-box-3">
+              <div class="onboarding-step-top">
+                <span class="onboarding-step-num">Step 03</span>
+                <span class="onboarding-step-badge pending" id="onboarding-step-badge-3">Pending</span>
+              </div>
+              <h3 class="onboarding-step-title">Review the candidate audit</h3>
+              <p class="onboarding-step-desc">
+                Explore the candidate's evaluation, evidence, and screening results before making your own hiring decision.
+              </p>
+              <div class="onboarding-step-action-wrap">
+                <button type="button" class="btn-primary btn-onboarding-step" id="btn-onboarding-step-3" disabled>
+                  <span>📋</span> View Candidate Audit
+                </button>
+                <div class="onboarding-step-hint" id="onboarding-step-3-hint">
+                  Complete Step 2 first to generate an audit.
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="onboarding-footer">
-            <button type="button" class="btn-primary" id="btn-onboarding-create-job" style="padding: 8px 16px; font-size: 0.84rem; font-weight: 700;">
-              Create your first job →
-            </button>
-            <button type="button" class="btn-text-sm" id="btn-onboarding-guide" style="font-size: 0.82rem; color: var(--color-primary); font-weight: 600; cursor: pointer; background: none; border: none; text-decoration: underline;">
-              Need help? View the 2-minute guide
+          <!-- All Steps Complete Banner (shown only when 3 of 3 done) -->
+          <div id="onboarding-all-complete-banner" style="display: none; margin-top: 14px; padding: 12px 18px; border-radius: 10px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.2rem;">🎉</span>
+              <div>
+                <strong style="color: #059669; font-size: 0.9rem;">Workspace Setup Complete!</strong>
+                <span style="color: var(--color-text-muted); font-size: 0.8rem; margin-left: 6px;">You are ready to hire with objective technical evidence.</span>
+              </div>
+            </div>
+            <button type="button" class="btn-primary" id="btn-onboarding-finish" style="background: #10b981; border: none; padding: 6px 16px; font-size: 0.82rem; font-weight: 700; border-radius: 6px; cursor: pointer;">
+              Done &amp; Go to Dashboard →
             </button>
           </div>
         </div>
@@ -328,63 +374,8 @@
           </div>
         </div>
 
-        <!-- Recruiter Impact & Showcase Launcher Banner -->
-        <!-- Recruiter Impact & Showcase Launcher Banner -->
-        <div class="hr-showcase-launcher-card" id="banner-open-showcase">
-          <div class="showcase-launcher-left">
-            <div class="showcase-launcher-badge">
-              <span class="badge-dot"></span> Executive Showcase
-            </div>
-            <h2 class="showcase-launcher-title">Your Recruiter Performance & Impact Showcase</h2>
-            <p class="showcase-launcher-desc">
-              Track candidate velocity, competency radar distributions, and active requisition throughput. Built for HR professionals to demonstrate verifiable hiring impact to leadership.
-            </p>
-          </div>
-          <div class="showcase-launcher-right">
-            <button type="button" class="btn-showcase-open" id="btn-home-open-showcase">
-              <span>📈</span> Open Progress Dashboard →
-            </button>
-          </div>
-        </div>
-
-        <!-- Operational Architecture & Visual Workflows Launcher Banner -->
-        <div class="hr-showcase-launcher-card" id="banner-open-workflows">
-          <div class="showcase-launcher-left">
-            <div class="showcase-launcher-badge wf-badge">
-              <span class="badge-dot wf-dot"></span> Operational Architecture & Workflows
-            </div>
-            <h2 class="showcase-launcher-title">How AuditAgent Works: The 5 Core Visual Frameworks</h2>
-            <p class="showcase-launcher-desc">
-              Explore interactive architectural workflows: 4-Step Recruitment Pipeline, Candidate Evaluation Lifecycle, 4-Quadrant Architecture, 5 Engineering Pillars, and the 6-Dimension Deterministic Scoring Engine.
-            </p>
-          </div>
-          <div class="showcase-launcher-right">
-            <button type="button" class="btn-showcase-open wf-btn" id="btn-home-open-workflows">
-              <span>🧭</span> Explore Visual Workflows →
-            </button>
-          </div>
-        </div>
-
-        <!-- Company Job Description Requirements & Hiring Accuracy Guide Banner -->
-        <div class="hr-showcase-launcher-card" id="banner-jd-accuracy">
-          <div class="showcase-launcher-left">
-            <div class="showcase-launcher-badge jd-badge">
-              <span class="badge-dot jd-dot"></span> Company JD Requirements & Accuracy Standard
-            </div>
-            <h2 class="showcase-launcher-title">What We Need From You: The Authoritative JD Guide</h2>
-            <p class="showcase-launcher-desc">
-              AI cannot audit what you do not specify. Learn the 5 essential components we need from your company to achieve 100% deterministic matching accuracy, explore our 6-step S-curve hiring roadmap, and see real JD comparisons.
-            </p>
-          </div>
-          <div class="showcase-launcher-right">
-            <button type="button" class="btn-showcase-open jd-btn" id="btn-home-open-jd-guide">
-              <span>📋</span> Open Company JD Guide →
-            </button>
-          </div>
-        </div>
-
         <!-- What's Next Action Center -->
-        <div class="whats-next-card">
+        <div class="whats-next-card" style="margin-top: 20px;">
           <div class="whats-next-header">
             <div>
               <h2 class="whats-next-title">What's next</h2>
@@ -441,6 +432,63 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Compact Recruiter Resources & Guides (Bottom) -->
+        <div class="hr-resources-bottom-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 28px;">
+          <!-- Recruiter Performance & Impact Showcase -->
+          <div class="hr-showcase-launcher-card" id="banner-open-showcase" style="margin-bottom: 0;">
+            <div class="showcase-launcher-left">
+              <div class="showcase-launcher-badge">
+                <span class="badge-dot"></span> Executive Showcase
+              </div>
+              <h3 class="showcase-launcher-title" style="font-size: 1.05rem;">Recruiter Performance Showcase</h3>
+              <p class="showcase-launcher-desc" style="font-size: 0.82rem;">
+                Track candidate velocity, radar distributions, and active throughput.
+              </p>
+            </div>
+            <div class="showcase-launcher-right">
+              <button type="button" class="btn-showcase-open" id="btn-home-open-showcase" style="padding: 8px 14px; font-size: 0.8rem;">
+                <span>📈</span> Open Showcase →
+              </button>
+            </div>
+          </div>
+
+          <!-- Operational Architecture & Visual Workflows Launcher Banner -->
+          <div class="hr-showcase-launcher-card" id="banner-open-workflows" style="margin-bottom: 0;">
+            <div class="showcase-launcher-left">
+              <div class="showcase-launcher-badge wf-badge">
+                <span class="badge-dot wf-dot"></span> Architecture &amp; Workflows
+              </div>
+              <h3 class="showcase-launcher-title" style="font-size: 1.05rem;">The 5 Visual Frameworks</h3>
+              <p class="showcase-launcher-desc" style="font-size: 0.82rem;">
+                Explore the 4-step pipeline, candidate lifecycle, and scoring engine.
+              </p>
+            </div>
+            <div class="showcase-launcher-right">
+              <button type="button" class="btn-showcase-open wf-btn" id="btn-home-open-workflows" style="padding: 8px 14px; font-size: 0.8rem;">
+                <span>🧭</span> Explore Workflows →
+              </button>
+            </div>
+          </div>
+
+          <!-- Company Job Description Requirements & Hiring Accuracy Guide Banner -->
+          <div class="hr-showcase-launcher-card" id="banner-jd-accuracy" style="margin-bottom: 0;">
+            <div class="showcase-launcher-left">
+              <div class="showcase-launcher-badge jd-badge">
+                <span class="badge-dot jd-dot"></span> JD Accuracy Standard
+              </div>
+              <h3 class="showcase-launcher-title" style="font-size: 1.05rem;">The Authoritative JD Guide</h3>
+              <p class="showcase-launcher-desc" style="font-size: 0.82rem;">
+                Learn the 5 essential components needed for 100% deterministic matching.
+              </p>
+            </div>
+            <div class="showcase-launcher-right">
+              <button type="button" class="btn-showcase-open jd-btn" id="btn-home-open-jd-guide" style="padding: 8px 14px; font-size: 0.8rem;">
+                <span>📋</span> Open JD Guide →
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -854,6 +902,22 @@
         </div>
       </div>
 
+      <!-- Fallback when no active baseline is selected -->
+      <div id="openings-no-baseline-banner" class="card" style="display: none; margin-bottom: 22px; padding: 14px 20px; border-radius: 12px; border: 1px dashed rgba(99,102,241,0.35); background: rgba(99,102,241,0.04); box-shadow: var(--shadow-sm);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(99,102,241,0.12); color: var(--color-primary); display: flex; align-items: center; justify-content: center; font-size: 1.15rem;">🎯</div>
+            <div>
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--color-text);">No Active Baseline Selected</div>
+              <div style="font-size: 0.8rem; color: var(--color-text-muted);">Select a role below using "⭐ Set as Baseline" or create an opening to establish your screening criteria.</div>
+            </div>
+          </div>
+          <button type="button" class="btn-primary" id="btn-banner-no-baseline-create" style="padding: 7px 14px; font-size: 0.82rem; font-weight: 700; border-radius: 8px;">
+            + Create Job
+          </button>
+        </div>
+      </div>
+
       <!-- Active Baseline Dedicated Notification Strip -->
       <div id="openings-active-baseline-banner" class="card" style="display: none; margin-bottom: 22px; padding: 16px 20px; border-radius: 12px; border: 2px solid #10b981; background: rgba(16,185,129,0.06); box-shadow: 0 4px 16px -2px rgba(16,185,129,0.15);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
@@ -1184,7 +1248,10 @@
               <!-- Actions -->
               <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                 <button type="button" class="btn-primary" id="btn-continue-to-job" style="padding: 11px 22px; font-weight: 700; font-size: 0.92rem; display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #10b981, #059669); border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
-                  <span>🎯</span> Continue to Job
+                  <span>🎯</span> Screen Candidates →
+                </button>
+                <button type="button" class="btn-secondary" id="btn-conf-set-baseline" style="display: none; padding: 11px 18px; font-size: 0.88rem; font-weight: 600;">
+                  <span>⭐</span> Set as Active Baseline
                 </button>
                 <button type="button" class="btn-secondary" id="btn-create-another-job" style="padding: 11px 18px; font-size: 0.88rem;">
                   <span>+</span> Create Another Job
@@ -1273,13 +1340,10 @@
                   required
                 ></textarea>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                <div style="margin-top: 6px;">
                   <p class="hint-text" style="margin: 0; font-size: 0.74rem; color: var(--color-text-muted);">
                     Supports multiple paragraphs, bullet points, and full-length requirements without truncation.
                   </p>
-                  <span id="job-create-word-count" style="font-size: 0.74rem; color: var(--color-text-muted); font-family: var(--font-mono); white-space: nowrap;">
-                    0 words | 0 chars
-                  </span>
                 </div>
               </div>
 
@@ -2259,6 +2323,15 @@ N8N -Maithili Lokhande
                     <span id="candidate-invite-otp" style="font-family: monospace; font-weight: 800; font-size: 1.05rem; letter-spacing: 2px; color: var(--color-primary);">------</span>
                     <span style="font-size: 0.74rem; color: var(--color-text-muted); margin-left: auto;">Expires in 7 days</span>
                   </div>
+
+                  <div id="candidate-email-delivery-bar" style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 7px 12px; background: rgba(99, 102, 241, 0.08); border-radius: 6px; border: 1px solid rgba(99, 102, 241, 0.2); font-size: 0.78rem;">
+                    <span id="candidate-invite-email-status" style="color: var(--color-primary); font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                      <span>✉️</span> <span id="candidate-invite-email-text">Invitation dispatched to candidate</span>
+                    </span>
+                    <button type="button" class="btn-text-sm" id="btn-resend-candidate-email" style="font-size: 0.75rem; color: var(--color-primary); background: none; border: none; cursor: pointer; text-decoration: underline; font-weight: 700;">
+                      📨 Resend Email
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2291,8 +2364,18 @@ N8N -Maithili Lokhande
                 </div>
 
                 <!-- Strict Non-Scoring Policy Notice -->
-                <div style="padding: 10px 14px; border-radius: 8px; background: rgba(59, 130, 246, 0.08); border-left: 4px solid #3b82f6; font-size: 0.78rem; line-height: 1.45; color: var(--color-text-muted);">
+                <div style="padding: 10px 14px; border-radius: 8px; background: rgba(59, 130, 246, 0.08); border-left: 4px solid #3b82f6; font-size: 0.78rem; line-height: 1.45; color: var(--color-text-muted); margin-bottom: 14px;">
                   <strong>Test 6 Strict Boundary Notice:</strong> This panel reports raw internal assessment grading only. In accordance with Test 6 requirements, no combined Job Match score, qualification threshold, or hiring recommendation (Shortlist / Review / Reject) has been generated.
+                </div>
+
+                <!-- Assessment Audit & PDF Actions -->
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button type="button" class="btn-primary" id="btn-view-assessment-audit" style="flex: 1; padding: 10px 16px; font-weight: 700; font-size: 0.86rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25); cursor: pointer;">
+                    <span>🔬</span> View Full Dossier &amp; Proctoring Audit
+                  </button>
+                  <button type="button" class="btn-secondary" id="btn-export-assessment-pdf" style="padding: 10px 16px; font-weight: 700; font-size: 0.86rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); border-radius: 8px; cursor: pointer;">
+                    <span>📄</span> Export Assessment PDF
+                  </button>
                 </div>
               </div>
             </section>
@@ -3154,11 +3237,11 @@ N8N -Maithili Lokhande
 
                 <!-- 6 Agents Grid -->
                 <div class="agents-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
-                  <!-- Agent 1 -->
+                  <!-- Engine 1 -->
                   <div class="agent-card" style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                       <strong style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                        <span>📄</span> Agent 1: Resume &amp; Claim Parser
+                        <span>📄</span> Engine 1: Resume &amp; Claim Parser
                       </strong>
                       <span class="badge" id="agent-1-badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700;">VERIFIED</span>
                     </div>
@@ -3167,11 +3250,11 @@ N8N -Maithili Lokhande
                     </p>
                   </div>
 
-                  <!-- Agent 2 -->
+                  <!-- Engine 2 -->
                   <div class="agent-card" style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                       <strong style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                        <span>🐙</span> Agent 2: GitHub Code Auditor
+                        <span>🐙</span> Engine 2: GitHub Code Auditor
                       </strong>
                       <span class="badge" id="agent-2-badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700;">VERIFIED</span>
                     </div>
@@ -3180,11 +3263,11 @@ N8N -Maithili Lokhande
                     </p>
                   </div>
 
-                  <!-- Agent 3 -->
+                  <!-- Engine 3 -->
                   <div class="agent-card" style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                       <strong style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                        <span>⚖️</span> Agent 3: Multi-Model Consensus
+                        <span>⚖️</span> Engine 3: Multi-Model Consensus
                       </strong>
                       <span class="badge" id="agent-3-badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700;">CONSENSUS</span>
                     </div>
@@ -3193,11 +3276,11 @@ N8N -Maithili Lokhande
                     </p>
                   </div>
 
-                  <!-- Agent 4 -->
+                  <!-- Engine 4 -->
                   <div class="agent-card" style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                       <strong style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                        <span>🎯</span> Agent 4: Role Fit &amp; Skills Gap
+                        <span>🎯</span> Engine 4: Role Fit &amp; Skills Gap
                       </strong>
                       <span class="badge" id="agent-4-badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700;">ANALYZED</span>
                     </div>
@@ -3206,11 +3289,11 @@ N8N -Maithili Lokhande
                     </p>
                   </div>
 
-                  <!-- Agent 5 -->
+                  <!-- Engine 5 -->
                   <div class="agent-card" style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                       <strong style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                        <span>💼</span> Agent 5: Decision &amp; Interview Architect
+                        <span>💼</span> Engine 5: Decision &amp; Interview Architect
                       </strong>
                       <span class="badge" id="agent-5-badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700;">STAGED</span>
                     </div>
@@ -3219,11 +3302,11 @@ N8N -Maithili Lokhande
                     </p>
                   </div>
 
-                  <!-- Agent 6 -->
+                  <!-- Engine 6 -->
                   <div class="agent-card" style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                       <strong style="font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
-                        <span>📹</span> Agent 6: Autonomous Proctor
+                        <span>📹</span> Engine 6: Autonomous Proctor
                       </strong>
                       <span class="badge" id="agent-6-badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #059669; font-weight: 700;">READY</span>
                     </div>
@@ -4875,14 +4958,19 @@ Responsibilities: Design low-latency ingestion APIs handling 50k req/s, optimize
 
           <!-- TAB 4: Copy Template -->
           <div class="jd-guide-panel" id="jd-tab-template">
-            <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
               <div>
                 <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--color-text); margin: 0;">Ready-to-Use Authoritative JD Template</h4>
-                <p style="font-size: 0.82rem; color: var(--color-text-muted); margin: 2px 0 0 0;">Copy this standard template, fill in your role details, and paste directly into AuditAgent's Job Creation form.</p>
+                <p style="font-size: 0.82rem; color: var(--color-text-muted); margin: 2px 0 0 0;">Copy this standard template or load it directly into the Job Creation form with one click.</p>
               </div>
-              <button type="button" class="btn-primary" id="btn-copy-authoritative-jd-template" style="padding: 8px 16px; font-size: 0.84rem;">
-                <span>📋</span> Copy Template to Clipboard
-              </button>
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary" id="btn-copy-authoritative-jd-template" style="padding: 8px 14px; font-size: 0.84rem; font-weight: 600;">
+                  <span>📋</span> Copy Template
+                </button>
+                <button type="button" class="btn-primary" id="btn-use-authoritative-jd-template" style="padding: 8px 18px; font-size: 0.84rem; font-weight: 700; background: linear-gradient(135deg, #10b981, #059669); border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                  <span>🚀</span> Use Template in Create Job →
+                </button>
+              </div>
             </div>
 
             <textarea id="authoritative-jd-template-text" readonly style="width: 100%; height: 260px; font-family: var(--font-mono); font-size: 0.8rem; background: var(--color-surface-hover); border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-text); padding: 14px; line-height: 1.5; resize: vertical;"># Job Title: Senior Distributed Systems Engineer
@@ -5112,8 +5200,12 @@ We are seeking a Senior Distributed Systems Engineer to architect, benchmark, an
         <div class="modal-body" id="modal-intel-body" style="padding: 0;">
           <!-- Rendered dynamically -->
         </div>
-        <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--color-border); padding-top: 14px;">
-          <button type="button" class="btn-secondary" id="btn-close-job-intel-modal-btn" style="padding: 8px 18px;">Close</button>
+        <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-border); padding-top: 14px; flex-wrap: wrap; gap: 10px;">
+          <button type="button" class="btn-secondary" id="btn-modal-intel-back" style="padding: 8px 18px;">← Back to Job Openings</button>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="button" class="btn-secondary" id="btn-modal-intel-set-baseline" style="padding: 8px 16px; font-weight: 600;">⭐ Set as Active Baseline</button>
+            <button type="button" class="btn-primary" id="btn-modal-intel-screen" style="padding: 8px 18px; font-weight: 700; background: linear-gradient(135deg, #6366f1, #4f46e5);">Screen Candidates →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -5261,6 +5353,132 @@ We are seeking a Senior Distributed Systems Engineer to architect, benchmark, an
         </div>
         <div class="modal-footer" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--color-border); padding-top: 14px;">
           <button type="button" class="btn-secondary" id="btn-close-preview-modal-btn" style="padding: 8px 18px;">Close Preview</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= CANDIDATE ASSESSMENT SCORECARD & PROCTORING DOSSIER MODAL ================= -->
+    <div class="modal-overlay" id="modal-candidate-assessment-audit" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 20px;">
+      <div class="modal-content" style="max-width: 980px; width: 100%; max-height: 92vh; display: flex; flex-direction: column; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px; color: var(--color-text); box-shadow: 0 24px 48px rgba(0,0,0,0.6); overflow: hidden;">
+        <!-- Modal Header -->
+        <div class="modal-header" style="padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border); background: var(--color-surface-hover);">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, rgba(2, 132, 199, 0.2), rgba(37, 99, 235, 0.2)); color: #0284c7; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
+              🔬
+            </div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <h3 id="audit-modal-candidate-name" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--color-text);">Candidate Assessment Dossier</h3>
+                <span id="audit-modal-status-badge" class="badge-pill" style="font-size: 0.76rem; padding: 3px 10px; font-weight: 800; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">
+                  Completed
+                </span>
+              </div>
+              <p id="audit-modal-role-subtitle" style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--color-text-muted);">
+                Technical Sandbox &amp; Continuous Anti-Cheat Telemetry
+              </p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" class="btn-secondary" id="btn-modal-download-assessment-pdf" style="padding: 7px 14px; font-size: 0.82rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); border-radius: 8px; cursor: pointer;">
+              <span>📄</span> Export PDF
+            </button>
+            <span class="modal-close" id="btn-close-audit-modal" style="cursor: pointer; font-size: 22px; color: var(--color-text-muted); line-height: 1; padding: 4px 8px;">✕</span>
+          </div>
+        </div>
+
+        <!-- Scrollable Modal Body -->
+        <div class="modal-body" style="padding: 24px; overflow-y: auto; flex: 1;">
+          <!-- Top KPI Metric Strip -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px;">
+            <div style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
+              <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Technical Score</span>
+              <div id="audit-kpi-score" style="font-size: 1.4rem; font-weight: 900; color: var(--color-text); margin-top: 2px;">-- / 100</div>
+              <span id="audit-kpi-score-sub" style="font-size: 0.74rem; color: #10b981; font-weight: 600;">Passing: 70+</span>
+            </div>
+            <div style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
+              <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Integrity Score</span>
+              <div id="audit-kpi-integrity" style="font-size: 1.4rem; font-weight: 900; color: #10b981; margin-top: 2px;">100%</div>
+              <span id="audit-kpi-integrity-sub" style="font-size: 0.74rem; color: var(--color-text-muted);">Anti-Cheat Rating</span>
+            </div>
+            <div style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
+              <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Proctoring Strikes</span>
+              <div id="audit-kpi-strikes" style="font-size: 1.4rem; font-weight: 900; color: var(--color-text); margin-top: 2px;">0 of 3</div>
+              <span id="audit-kpi-strikes-sub" style="font-size: 0.74rem; color: var(--color-text-muted);">Strict 3-Strike Rule</span>
+            </div>
+            <div style="padding: 14px; border-radius: 10px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
+              <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase;">Test Duration</span>
+              <div id="audit-kpi-duration" style="font-size: 1.4rem; font-weight: 900; color: var(--color-text); margin-top: 2px;">30 mins</div>
+              <span id="audit-kpi-completed-at" style="font-size: 0.74rem; color: var(--color-text-muted);">Completed</span>
+            </div>
+          </div>
+
+          <!-- Tab Navigation -->
+          <div style="display: flex; gap: 8px; border-bottom: 1px solid var(--color-border); margin-bottom: 20px;">
+            <button type="button" class="tab-btn active" id="tab-audit-challenges" style="padding: 10px 16px; font-weight: 700; font-size: 0.88rem; background: none; border: none; border-bottom: 2px solid #2563eb; color: #2563eb; cursor: pointer;">
+              💻 Code &amp; Challenges (<span id="audit-q-count">0</span>)
+            </button>
+            <button type="button" class="tab-btn" id="tab-audit-evaluation" style="padding: 10px 16px; font-weight: 700; font-size: 0.88rem; background: none; border: none; border-bottom: 2px solid transparent; color: var(--color-text-muted); cursor: pointer;">
+              🧠 AI Synthesis &amp; Feedback
+            </button>
+            <button type="button" class="tab-btn" id="tab-audit-proctoring" style="padding: 10px 16px; font-weight: 700; font-size: 0.88rem; background: none; border: none; border-bottom: 2px solid transparent; color: var(--color-text-muted); cursor: pointer;">
+              🛡️ Anti-Cheat Audit Log (<span id="audit-log-count">0</span>)
+            </button>
+          </div>
+
+          <!-- Tab Pane 1: Code & Challenges -->
+          <div id="pane-audit-challenges" style="display: block;">
+            <div id="audit-challenges-container" style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- Dynamically populated question cards -->
+            </div>
+          </div>
+
+          <!-- Tab Pane 2: AI Synthesis & Feedback -->
+          <div id="pane-audit-evaluation" style="display: none;">
+            <div style="background: var(--color-surface-hover); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+              <h4 style="margin: 0 0 10px 0; font-size: 1rem; font-weight: 800; color: var(--color-text);">Executive Evaluation Summary</h4>
+              <p id="audit-eval-summary-text" style="margin: 0; font-size: 0.9rem; line-height: 1.6; color: var(--color-text);">
+                Candidate demonstrated technical competency across algorithmic problem solving.
+              </p>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+              <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 18px;">
+                <h4 style="margin: 0 0 12px 0; font-size: 0.95rem; font-weight: 800; color: #10b981; display: flex; align-items: center; gap: 6px;">
+                  <span>✓</span> Demonstrated Strengths
+                </h4>
+                <ul id="audit-strengths-list" style="margin: 0; padding-left: 20px; font-size: 0.85rem; line-height: 1.6; color: var(--color-text);">
+                </ul>
+              </div>
+              <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 18px;">
+                <h4 style="margin: 0 0 12px 0; font-size: 0.95rem; font-weight: 800; color: #ef4444; display: flex; align-items: center; gap: 6px;">
+                  <span>⚠️</span> Identified Growth Areas
+                </h4>
+                <ul id="audit-weaknesses-list" style="margin: 0; padding-left: 20px; font-size: 0.85rem; line-height: 1.6; color: var(--color-text);">
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Pane 3: Anti-Cheat Proctoring Log -->
+          <div id="pane-audit-proctoring" style="display: none;">
+            <div id="audit-proctoring-empty" style="display: none; text-align: center; padding: 36px 20px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px;">
+              <span style="font-size: 2.2rem;">🛡️</span>
+              <h4 style="margin: 10px 0 4px 0; font-size: 1.05rem; font-weight: 800; color: #10b981;">Clean Proctoring Session</h4>
+              <p style="margin: 0; font-size: 0.85rem; color: var(--color-text-muted);">No window blur, fullscreen exits, background noise, or copy-paste violations occurred during this assessment.</p>
+            </div>
+            <div id="audit-proctoring-list" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Chronological proctoring log cards -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; background: var(--color-surface-hover);">
+          <span style="font-size: 0.76rem; color: var(--color-text-muted);">
+            Assistive technical audit grounded strictly in automated code execution &amp; anti-cheat telemetry.
+          </span>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary" id="btn-close-audit-modal-footer" style="padding: 8px 18px; font-weight: 700; font-size: 0.85rem; cursor: pointer;">Close</button>
+          </div>
         </div>
       </div>
     </div>

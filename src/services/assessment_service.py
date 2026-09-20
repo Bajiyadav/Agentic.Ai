@@ -122,8 +122,28 @@ def detect_exam_track(job_title: str, required_skills: Optional[List[str]] = Non
         return "api_integrations_engineer"
     if any(k in t for k in ["game", "game developer", "graphics", "unreal", "unity", "vulkan", "shader"]):
         return "game_developer"
-    if any(k in t for k in ["security", "cyber", "infosec", "appsec", "penetration", "soc"]):
+    if any(k in t for k in ["soc", "threat intelligence", "threat hunter", "incident response", "siem analyst", "forensic"]):
+        return "cybersecurity_analyst"
+    if any(k in t for k in ["security", "cyber", "infosec", "appsec", "penetration"]):
         return "security_engineer"
+    if any(k in t for k in ["network", "bgp", "cisco", "juniper", "switch", "routing", "router"]):
+        return "network_engineer"
+    if any(k in t for k in ["mlops", "aiops", "triton", "model serving", "feature store"]):
+        return "aiops_mlops_engineer"
+    if any(k in t for k in ["big data", "lakehouse", "iceberg", "delta lake", "spark architect"]):
+        return "big_data_architect"
+    if any(k in t for k in ["salesforce", "apex", "crm", "servicenow", "soql"]):
+        return "crm_enterprise_developer"
+    if any(k in t for k in ["ar/vr", "xr", "webxr", "spatial", "virtual reality", "augmented reality"]):
+        return "ar_vr_engineer"
+    if any(k in t for k in ["quant", "fintech", "hft", "trading", "fix protocol", "order book"]):
+        return "fintech_quant_developer"
+    if any(k in t for k in ["bioinformatics", "genomics", "computational biology", "dna", "fastq"]):
+        return "bioinformatics_engineer"
+    if any(k in t for k in ["robotics", "autonomous", "ros", "ros 2", "lidar", "slam", "kalman"]):
+        return "robotics_autonomous_engineer"
+    if any(k in t for k in ["chaos", "resilience engineer", "chaos engineering", "sre specialist"]):
+        return "site_reliability_engineer"
     if any(k in t for k in ["analyst", "business intelligence", "tableau", "power bi", "bi analyst"]):
         return "data_analyst"
     if any(k in t for k in ["qa", "sdet", "test automation", "tester", "quality engineer"]):
@@ -152,7 +172,17 @@ def detect_exam_track(job_title: str, required_skills: Optional[List[str]] = Non
     if any(k in s for k in ["a/b testing", "statistics", "scikit-learn"]): return "data_scientist"
     if any(k in s for k in ["oauth2", "webhooks", "rest"]): return "api_integrations_engineer"
     if any(k in s for k in ["unity", "unreal", "opengl"]): return "game_developer"
+    if any(k in s for k in ["siem", "wireshark", "splunk"]): return "cybersecurity_analyst"
     if any(k in s for k in ["owasp", "cryptography", "appsec"]): return "security_engineer"
+    if any(k in s for k in ["bgp", "ospf", "tcp/ip", "cisco"]): return "network_engineer"
+    if any(k in s for k in ["triton", "kubeflow", "model drift"]): return "aiops_mlops_engineer"
+    if any(k in s for k in ["iceberg", "delta lake", "salting"]): return "big_data_architect"
+    if any(k in s for k in ["salesforce", "apex", "soql"]): return "crm_enterprise_developer"
+    if any(k in s for k in ["webxr", "quaternion", "spatial audio"]): return "ar_vr_engineer"
+    if any(k in s for k in ["fix protocol", "vwap", "order matching"]): return "fintech_quant_developer"
+    if any(k in s for k in ["fastq", "vcf", "biopython"]): return "bioinformatics_engineer"
+    if any(k in s for k in ["ros 2", "ros", "slam", "lidar"]): return "robotics_autonomous_engineer"
+    if any(k in s for k in ["chaos engineering", "error budget"]): return "site_reliability_engineer"
     if any(k in s for k in ["tableau", "powerbi", "sql analytics"]): return "data_analyst"
     if any(k in s for k in ["selenium", "playwright", "cypress", "pytest"]): return "qa_automation_engineer"
     if any(k in s for k in ["swift", "kotlin", "flutter"]): return "mobile_engineer"
@@ -373,14 +403,13 @@ class AssessmentService:
         if not assessment:
             raise ValueError("Assessment not found.")
 
-        # If already disqualified due to proctoring violations, keep score 0
+        # Immutability Check: Completed assessments cannot be re-submitted or altered
+        if assessment.status == "completed":
+            raise ValueError("Assessment has already been completed and cannot be re-submitted.")
+
+        # Disqualified assessments cannot be evaluated
         if assessment.status == "integrity_disqualified":
-            assessment.answers_json = answers
-            assessment.score = 0
-            assessment.completed_at = datetime.now(timezone.utc)
-            await self.db.commit()
-            await self.db.refresh(assessment)
-            return assessment
+            raise ValueError("Assessment has been auto-terminated due to proctoring violations and cannot be evaluated.")
 
         questions = assessment.questions_json or []
         eval_result = evaluate_assessment_submission(

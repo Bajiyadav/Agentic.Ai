@@ -1585,6 +1585,7 @@
         try {
           localStorage.setItem('hr_recruiter_name', name);
           localStorage.setItem('hr_recruiter_role', role);
+          localStorage.setItem('hr_recruiter_email', email);
           localStorage.setItem('auditagent_auth_user', JSON.stringify({
             name: name,
             role: role,
@@ -1593,6 +1594,7 @@
             tier: 'Growth Plan (500 credits)'
           }));
           localStorage.setItem('auditagent_jwt', 'jwt-bearer-token-' + Date.now());
+          sessionStorage.removeItem('auditagent_logged_out');
         } catch (e) {
           console.warn('Storage error:', e);
         }

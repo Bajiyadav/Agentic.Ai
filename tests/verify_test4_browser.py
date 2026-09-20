@@ -52,6 +52,10 @@ async def main():
         await page.goto("http://localhost:8000", wait_until="networkidle")
         await asyncio.sleep(1)
 
+        # Switch to Single Candidate Audit tab
+        await page.click("#tab-single-btn")
+        await asyncio.sleep(0.5)
+
         # Ensure active job context banner is visible
         job_banner = page.locator("#active-job-context-banner")
         await job_banner.wait_for(state="visible", timeout=10000)
@@ -94,6 +98,10 @@ async def main():
         mobile_page = await mobile_context.new_page()
         await mobile_page.goto("http://localhost:8000", wait_until="networkidle")
         await asyncio.sleep(1)
+        await mobile_page.click("#btn-sidebar-toggle")
+        await asyncio.sleep(0.5)
+        await mobile_page.click("#tab-single-btn")
+        await asyncio.sleep(0.5)
 
         # Set input file on mobile
         m_file_input = mobile_page.locator("#resume-input")
@@ -115,6 +123,8 @@ async def main():
         err_page = await err_context.new_page()
         await err_page.goto("http://localhost:8000", wait_until="networkidle")
         await asyncio.sleep(1)
+        await err_page.click("#tab-single-btn")
+        await asyncio.sleep(0.5)
 
         # Create dummy unsupported file
         invalid_path = os.path.join(TEMP_DIR, "invalid_image.png")

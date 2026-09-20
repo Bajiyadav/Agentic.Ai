@@ -1,7 +1,7 @@
 import re
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -11,11 +11,15 @@ from src.db.models import User, Organization, Membership, AuditLog
 from src.security import hash_password, verify_password, create_access_token
 from src.auth.schemas import (
     UserRegister, UserLogin, TokenResponse, UserResponse,
-    MembershipInfo, OrganizationResponse, TenantContext
+    MembershipInfo, OrganizationResponse, TenantContext,
+    OnboardingStatePayload, OnboardingStateResponse
 )
 from src.auth.dependencies import get_current_user, get_tenant_context
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication & Organizations"])
+
+# User-specific persistent in-memory onboarding state cache
+USER_ONBOARDING_STATES: Dict[str, Dict[str, Any]] = {}
 
 def slugify(text: str) -> str:
     s = text.lower().strip()
@@ -223,3 +227,48 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
 async def get_active_tenant_context(tenant: TenantContext = Depends(get_tenant_context)):
     """Returns active organization tenancy details and user's role for the current request."""
     return tenant
+
+@router.get("/onboarding-state", response_model=OnboardingStateResponse)
+async def get_user_onboarding_state(
+    email: Optional[str] = Query(None, description="Optional recruiter email identifier"),
+    user_id: Optional[str] = Query(None, description="Optional user ID identifier")
+):
+    """Fetches user-specific persistent onboarding state."""
+    key = (email or user_id or "default").lower().strip()
+    state = USER_ONBOARDING_STATES.get(key, {
+        "dismissed": False,
+        "audit_reviewed": False,
+        "completed": False,
+        "completed_steps": []
+    })
+    return OnboardingStateResponse(
+        user_id=user_id or key,
+        user_email=email or (f"{key}@acmecorp.com" if "@" not in key else key),
+        dismissed=state.get("dismissed", False),
+        audit_reviewed=state.get("audit_reviewed", False),
+        completed=state.get("completed", False),
+        completed_steps=state.get("completed_steps", [])
+    )
+
+@router.post("/onboarding-state", response_model=OnboardingStateResponse)
+async def save_user_onboarding_state(
+    payload: OnboardingStatePayload,
+    email: Optional[str] = Query(None, description="Optional recruiter email identifier"),
+    user_id: Optional[str] = Query(None, description="Optional user ID identifier")
+):
+    """Updates user-specific persistent onboarding state."""
+    key = (payload.email or payload.user_id or email or user_id or "default").lower().strip()
+    USER_ONBOARDING_STATES[key] = {
+        "dismissed": payload.dismissed,
+        "audit_reviewed": payload.audit_reviewed,
+        "completed": payload.completed,
+        "completed_steps": payload.completed_steps
+    }
+    return OnboardingStateResponse(
+        user_id=payload.user_id or user_id or key,
+        user_email=payload.email or email or (f"{key}@acmecorp.com" if "@" not in key else key),
+        dismissed=payload.dismissed,
+        audit_reviewed=payload.audit_reviewed,
+        completed=payload.completed,
+        completed_steps=payload.completed_steps
+    )
