@@ -1351,7 +1351,7 @@ async def generate_assessment_questions_from_jd(
             job_id=job.id,
             title=f"{job.title} Technical Assessment",
             description=f"Generated from authoritative JD requirements for {job.title}",
-            duration_minutes=30,
+            duration_minutes=45,
             status="DRAFT",
             questions_json=generated,
             skills_covered=[]
@@ -1359,6 +1359,8 @@ async def generate_assessment_questions_from_jd(
         db.add(ass)
     else:
         ass.questions_json = generated
+        if not ass.duration_minutes:
+            ass.duration_minutes = 45
         if ass.status != "PUBLISHED":
             ass.status = "DRAFT"
 

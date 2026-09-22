@@ -2237,7 +2237,8 @@ select.custom-select {
   padding: 24px;
 }
 
-.history-item {
+/* Legacy or standalone card list item fallback */
+div.history-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2249,7 +2250,7 @@ select.custom-select {
   transition: all 0.25s ease;
 }
 
-.history-item:hover {
+div.history-item:hover {
   background: rgba(180, 83, 9, 0.06);
   border-color: rgba(180, 83, 9, 0.3);
   transform: translateX(3px);
@@ -2257,9 +2258,16 @@ select.custom-select {
 
 .history-data-table {
   width: 100%;
+  min-width: 920px;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.84rem;
+  table-layout: fixed;
+}
+
+.history-data-table thead tr {
+  display: table-row !important;
+  background: var(--color-surface-hover, #f8f6f0);
 }
 
 .history-data-table th {
@@ -2270,20 +2278,44 @@ select.custom-select {
   color: var(--color-text);
   font-size: 0.74rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
+  box-sizing: border-box;
 }
 
-.history-table-row {
+/* Enforce strict table row display on all history table rows */
+.history-data-table tbody tr,
+tr.history-table-row,
+tr.history-item {
+  display: table-row !important;
   transition: background-color 0.15s ease;
   border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  transform: none !important;
+  background: transparent;
 }
 
-.history-table-row:nth-child(even) {
-  background-color: var(--color-surface-hover, rgba(0, 0, 0, 0.015));
+.history-data-table tbody tr:nth-child(even),
+tr.history-table-row:nth-child(even),
+tr.history-item:nth-child(even) {
+  background-color: var(--color-surface-hover, rgba(0, 0, 0, 0.015)) !important;
 }
 
-.history-table-row:hover {
+.history-data-table tbody tr:hover,
+tr.history-table-row:hover,
+tr.history-item:hover {
   background-color: #f7f1e6 !important;
+  transform: none !important;
+  border-color: var(--color-border) !important;
+}
+
+.history-data-table td {
+  display: table-cell !important;
+  vertical-align: middle !important;
+  box-sizing: border-box;
 }
 
 .history-table-row:hover .btn-sm-table {
@@ -4221,13 +4253,13 @@ select:-webkit-autofill {
   border-color: var(--color-primary);
 }
 
-.history-item {
+div.history-item {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
 }
 
-.history-item:hover {
+div.history-item:hover {
   background: var(--color-surface-hover);
   border-color: var(--color-primary);
 }

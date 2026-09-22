@@ -5297,14 +5297,14 @@ function renderHistoryTable() {
       : '';
 
     row.innerHTML = `
-      <td style="padding: 13px 16px;">
+      <td style="padding: 13px 16px; vertical-align: middle;">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #d97706, #92400e); border: 1px solid rgba(180, 83, 9, 0.35); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 800; color: #ffffff; flex-shrink: 0; box-shadow: 0 2px 6px rgba(180, 83, 9, 0.2);">
             ${initials}
           </div>
-          <div style="min-width: 0;">
-            <div style="font-weight: 700; font-size: 0.88rem; color: var(--color-text); display: flex; align-items: center; flex-wrap: wrap;">
-              <span class="h-candidate">${item.candidate_name || 'Candidate'}</span>
+          <div style="min-width: 0; overflow: hidden;">
+            <div style="font-weight: 700; font-size: 0.88rem; color: var(--color-text); display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+              <span class="h-candidate" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${item.candidate_name || 'Candidate'}</span>
               ${evalPill}
             </div>
             <div style="font-size: 0.72rem; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -5313,30 +5313,30 @@ function renderHistoryTable() {
           </div>
         </div>
       </td>
-      <td style="padding: 13px 16px;">
-        <span style="font-family: var(--font-mono); font-size: 0.76rem; background: var(--color-surface-hover); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--color-border); color: var(--color-text); display: inline-flex; align-items: center; gap: 4px;">
+      <td style="padding: 13px 16px; vertical-align: middle; white-space: nowrap;">
+        <span style="font-family: var(--font-mono); font-size: 0.76rem; background: var(--color-surface-hover); padding: 4px 9px; border-radius: 6px; border: 1px solid var(--color-border); color: var(--color-text); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;">
           <span>🐙</span> ${githubHandle}
         </span>
       </td>
-      <td style="padding: 13px 16px; font-size: 0.78rem; color: var(--color-text-muted);">
-        <div style="font-weight: 500; color: var(--color-text);">${item.screened_at || '2026-09-12'}</div>
-        <div style="font-size: 0.70rem; color: var(--color-text-dim);">Latency: ${item.latency_seconds || '0.8'}s</div>
+      <td style="padding: 13px 16px; font-size: 0.78rem; color: var(--color-text-muted); vertical-align: middle; white-space: nowrap;">
+        <div style="font-weight: 600; color: var(--color-text); line-height: 1.3;">${item.screened_at || '2026-09-12'}</div>
+        <div style="font-size: 0.70rem; color: var(--color-text-dim); line-height: 1.3;">Latency: ${item.latency_seconds || '0.8'}s</div>
       </td>
-      <td style="padding: 13px 16px;">
-        <span class="rec-badge" style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor};">
+      <td style="padding: 13px 16px; vertical-align: middle; white-space: nowrap;">
+        <span class="rec-badge" style="display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeColor}; white-space: nowrap; letter-spacing: 0.3px;">
           ${badgeLabel}
         </span>
       </td>
-      <td style="padding: 13px 16px;">
+      <td style="padding: 13px 16px; vertical-align: middle; white-space: nowrap;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="width: 44px; height: 6px; background: rgba(0,0,0,0.08); border-radius: 99px; overflow: hidden;">
+          <div style="width: 44px; height: 6px; background: rgba(0,0,0,0.08); border-radius: 99px; overflow: hidden; flex-shrink: 0;">
             <div style="width: ${Math.min(100, Math.max(0, scoreVal))}%; height: 100%; background: ${scoreColor}; border-radius: 99px;"></div>
           </div>
           <span style="font-weight: 800; font-size: 0.88rem; color: ${scoreColor}; font-family: var(--font-mono);">${scoreDisplay}</span>
         </div>
       </td>
-      <td style="padding: 13px 16px; text-align: right; white-space: nowrap;">
-        <button type="button" class="btn-sm-table" title="View complete evaluation scorecard">
+      <td style="padding: 13px 16px; text-align: right; white-space: nowrap; vertical-align: middle;">
+        <button type="button" class="btn-sm-table" title="View complete evaluation scorecard" style="white-space: nowrap;">
           Inspect →
         </button>
         <button type="button" class="btn-delete-screening-item" data-id="${item.id || item.audit_id || ''}" data-name="${encodeURIComponent(item.candidate_name || 'Candidate')}" title="Delete this candidate evaluation" style="margin-left: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(225, 29, 72, 0.3); background: rgba(225, 29, 72, 0.08); color: #e11d48; cursor: pointer; font-size: 0.72rem; transition: all 0.2s;">
@@ -7215,9 +7215,17 @@ async function loadJobAssessmentBuilder(jobId) {
     }
 
     if (qCountEl) qCountEl.textContent = currentAssessmentQuestions.length;
+    const bQCount = document.getElementById('builder-q-count');
+    if (bQCount) bQCount.textContent = currentAssessmentQuestions.length;
+
     const totalPts = currentAssessmentQuestions.reduce((acc, q) => acc + (parseInt(q.points) || 0), 0);
     if (pointsEl) pointsEl.textContent = `${totalPts} pts`;
-    if (timeEl) timeEl.textContent = `${data.time_limit_minutes || 45} mins`;
+    if (timeEl) timeEl.textContent = `${data.duration_minutes || data.time_limit_minutes || 45} mins`;
+
+    const durSelect = document.getElementById('builder-duration-select');
+    if (durSelect) {
+      durSelect.value = String(data.duration_minutes || data.time_limit_minutes || 45);
+    }
 
     renderBuilderSkillsChips(currentAssessmentQuestions, chipsEl);
     renderBuilderQuestionsTable(currentAssessmentQuestions, tbodyEl, isPub);

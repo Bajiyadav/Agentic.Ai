@@ -1410,6 +1410,19 @@
 
       <!-- ================= JOB ASSESSMENT BUILDER SECTION (TEST 6) ================= -->
       <section class="card assessment-builder-card" id="job-assessment-builder-section" style="margin-top: 28px; display: none; border: 1px solid var(--color-border); border-radius: 12px; padding: 22px; background: var(--color-surface); box-shadow: var(--shadow-sm);">
+        
+        <!-- Dual Creation Mode Segmented Switcher -->
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; padding: 6px; background: var(--color-surface-hover); border-radius: 10px; border: 1px solid var(--color-border);">
+          <button type="button" id="btn-mode-autonomous-ai" class="btn-mode-toggle active" style="flex: 1; padding: 11px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; border: 1px solid var(--color-primary); background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; box-shadow: 0 2px 6px rgba(99,102,241,0.25);">
+            <span>⚡ Mode A: Autonomous AI</span>
+            <span style="font-size: 0.74rem; opacity: 0.9; font-weight: 500;">(Zero Effort • Auto-extracts stack from JD)</span>
+          </button>
+          <button type="button" id="btn-mode-custom-builder" class="btn-mode-toggle" style="flex: 1; padding: 11px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 700; cursor: pointer; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s;">
+            <span>🛠️ Mode B: Custom Exam Builder</span>
+            <span style="font-size: 0.74rem; opacity: 0.9; font-weight: 500;">(Full Control • Custom questions & unit tests)</span>
+          </button>
+        </div>
+
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--color-border); padding-bottom: 16px;">
           <div>
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
@@ -1417,16 +1430,16 @@
               <h3 style="margin: 0; font-size: 1.3rem; font-weight: 800; color: var(--color-text);">Job Assessment Builder</h3>
               <span id="builder-status-badge" class="badge-pill" style="font-weight: 700; font-size: 0.72rem; background: rgba(99,102,241,0.15); color: var(--color-primary); border: 1px solid rgba(99,102,241,0.3);">DRAFT</span>
             </div>
-            <p style="margin: 0; font-size: 0.84rem; color: var(--color-text-muted);">
-              Configure, customize, and publish a technical assessment specifically tied to this Job Opening.
+            <p id="builder-mode-caption" style="margin: 0; font-size: 0.84rem; color: var(--color-text-muted);">
+              ⚡ <strong>Mode A Active:</strong> Autonomous AI generates a tailored 45-minute technical exam matching your job description.
             </p>
           </div>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <button type="button" class="btn-primary" id="btn-builder-generate-from-jd" style="padding: 9px 16px; font-size: 0.84rem; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; display: flex; align-items: center; gap: 6px;">
-              <span>🧠</span> Generate from JD
+              <span>⚡</span> Generate from JD
             </button>
             <button type="button" class="btn-secondary" id="btn-builder-add-question" style="padding: 9px 14px; font-size: 0.84rem; font-weight: 600;">
-              <span>+</span> Add Question
+              <span>+</span> Add Custom Question
             </button>
             <button type="button" class="btn-secondary" id="btn-builder-preview" style="padding: 9px 14px; font-size: 0.84rem;">
               <span>👁️</span> Preview
@@ -1459,8 +1472,15 @@
             <div id="builder-status-text" style="font-size: 0.92rem; font-weight: 700; color: var(--color-primary); margin-top: 2px;">DRAFT</div>
           </div>
           <div style="padding: 10px 14px; border-radius: 8px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
-            <span style="font-size: 0.7rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase;">Duration</span>
-            <div id="builder-duration-text" style="font-size: 0.92rem; font-weight: 700; color: var(--color-text); margin-top: 2px;">30 Mins</div>
+            <span style="font-size: 0.7rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase;">Time Limit / Duration</span>
+            <div style="margin-top: 2px;">
+              <select id="builder-duration-select" class="form-input" style="width: 100%; font-size: 0.86rem; font-weight: 700; padding: 4px 8px; border-radius: 6px; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); cursor: pointer;">
+                <option value="30">30 Minutes</option>
+                <option value="45" selected>45 Minutes (Recommended)</option>
+                <option value="60">60 Minutes</option>
+                <option value="90">90 Minutes</option>
+              </select>
+            </div>
           </div>
           <div style="padding: 10px 14px; border-radius: 8px; background: var(--color-surface-hover); border: 1px solid var(--color-border);">
             <span style="font-size: 0.7rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase;">Questions</span>
@@ -3531,23 +3551,23 @@ N8N -Maithili Lokhande
         </div>
 
         <div class="history-table-container" id="history-table-container" style="margin-top: 14px; overflow-x: auto; border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-surface); box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
-          <table class="history-data-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.84rem; table-layout: fixed;">
+          <table class="history-data-table" style="width: 100%; min-width: 920px; border-collapse: collapse; text-align: left; font-size: 0.84rem; table-layout: fixed;">
             <colgroup>
-              <col style="width: 26%;">
+              <col style="width: 25%;">
+              <col style="width: 16%;">
               <col style="width: 16%;">
               <col style="width: 17%;">
-              <col style="width: 17%;">
               <col style="width: 12%;">
-              <col style="width: 12%;">
+              <col style="width: 14%;">
             </colgroup>
             <thead>
               <tr style="border-bottom: 2px solid var(--color-border); background: var(--color-surface-hover);">
-                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px;">👤 Candidate</th>
-                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px;">🐙 GitHub Evidence</th>
-                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px;">📅 Date & Latency</th>
-                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px;">⚖️ Verdict</th>
-                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px;">🎯 Score</th>
-                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; text-align: right;">⚡ Action</th>
+                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; vertical-align: middle;">👤 Candidate</th>
+                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; vertical-align: middle;">🐙 GitHub Evidence</th>
+                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; vertical-align: middle;">📅 Date &amp; Latency</th>
+                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; vertical-align: middle;">⚖️ Verdict</th>
+                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; vertical-align: middle;">🎯 Score</th>
+                <th style="padding: 13px 16px; font-weight: 700; color: var(--color-text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.6px; text-align: right; white-space: nowrap; vertical-align: middle;">⚡ Action</th>
               </tr>
             </thead>
             <tbody id="history-list">
@@ -5314,9 +5334,18 @@ We are seeking a Senior Distributed Systems Engineer to architect, benchmark, an
               <label for="edit-q-starter-code" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); display: block; margin-bottom: 4px;">Starter Code Template</label>
               <textarea id="edit-q-starter-code" rows="4" style="width: 100%; font-family: monospace; font-size: 0.82rem; padding: 8px 10px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; color: var(--color-text);"></textarea>
             </div>
-            <div>
+            <div style="margin-bottom: 10px;">
               <label for="edit-q-test-cases" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); display: block; margin-bottom: 4px;">Automated Test Cases (JSON Array)</label>
-              <textarea id="edit-q-test-cases" rows="4" placeholder='[{"input": "...", "expected_output": "...", "hidden": false}]' style="width: 100%; font-family: monospace; font-size: 0.82rem; padding: 8px 10px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; color: var(--color-text);"></textarea>
+              <textarea id="edit-q-test-cases" rows="4" placeholder='[{"input_data": ["..."], "expected_output": "...", "description": "Test 1", "hidden": false}]' style="width: 100%; font-family: monospace; font-size: 0.82rem; padding: 8px 10px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; color: var(--color-text);"></textarea>
+            </div>
+            <div style="padding: 10px; border-radius: 6px; background: var(--color-surface); border: 1px dashed var(--color-border);">
+              <label for="edit-q-upload-tests" style="font-size: 0.74rem; font-weight: 700; color: var(--color-primary); display: flex; align-items: center; gap: 6px; margin-bottom: 4px; cursor: pointer;">
+                <span>📁</span> Upload Private Unit Tests (.json, .py, .txt)
+              </label>
+              <input type="file" id="edit-q-upload-tests" accept=".json,.py,.txt,.sql" style="font-size: 0.78rem; width: 100%; color: var(--color-text); cursor: pointer;" />
+              <div style="font-size: 0.7rem; color: var(--color-text-muted); margin-top: 4px;">
+                Accepts JSON test case arrays or Python test files. File content automatically populates the test cases above.
+              </div>
             </div>
           </div>
 

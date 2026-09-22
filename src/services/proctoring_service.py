@@ -25,7 +25,10 @@ class ProctorCheckResult(BaseModel):
     status: str  # "ok", "warning", "strike", "auto_terminated"
     strike_added: bool = False
     strike_count: int = 0
-    max_strikes: int = 3
+    max_strikes: int = 10
+    remaining_strikes: int = 10
+    show_warning_modal: bool = False
+    warning_level: str = "none"  # "none", "warning_strike_8", "final_strike_9"
     violation_type: Optional[str] = None
     message: str = "Assessment environment secure."
     integrity_score: int = 100
@@ -36,10 +39,12 @@ class ProctoringService:
     """
     Enterprise AI Vision & Audio Proctoring Engine.
     Monitors candidate webcam feed, microphone audio level, fullscreen integrity,
-    tab switching, and copy/paste blocking with 3-strike auto-termination.
+    instant tab switching, and zero-tolerance copy/paste blocking with 10-strike stealth auto-termination.
     """
 
-    MAX_STRIKES = 3  # 4th violation causes immediate auto-termination
+    MAX_STRIKES = 10  # 10th violation causes immediate auto-termination
+    WARNING_THRESHOLD = 8  # Show warning modal when 2 strikes remaining
+    FINAL_WARNING_THRESHOLD = 9  # Show critical warning modal when 1 strike remaining
     AUDIO_VOICE_THRESHOLD = 0.50  # RMS threshold for sustained speech/noise
 
     @staticmethod
@@ -180,6 +185,9 @@ class ProctoringService:
                 strike_added=False,
                 strike_count=current_strikes,
                 max_strikes=cls.MAX_STRIKES,
+                remaining_strikes=0,
+                show_warning_modal=True,
+                warning_level="disqualified",
                 violation_type="disqualified",
                 message="Assessment has been terminated due to integrity violations.",
                 integrity_score=assessment.integrity_score or 0,
@@ -235,8 +243,8 @@ class ProctoringService:
             current_strikes += 1
             assessment.strike_count = current_strikes
 
-        # Calculate dynamic Integrity Trust Score
-        new_integrity = max(0, 100 - (current_strikes * 25))
+        # Calculate dynamic Integrity Trust Score (10 points per strike across 10 strikes)
+        new_integrity = max(0, 100 - (current_strikes * 10))
         assessment.integrity_score = new_integrity
 
         # Format log entry
@@ -266,13 +274,15 @@ class ProctoringService:
             })
             assessment.snapshots_json = snaps
 
-        # Check for Auto-Termination threshold (Strike 4 => Disqualification)
-        is_disqualified = current_strikes > cls.MAX_STRIKES
+        remaining = max(0, cls.MAX_STRIKES - current_strikes)
+
+        # Check for Auto-Termination threshold (Strike 10 => Immediate Disqualification)
+        is_disqualified = current_strikes >= cls.MAX_STRIKES
         if is_disqualified:
             assessment.status = "integrity_disqualified"
             assessment.disqualification_reason = (
                 f"Assessment automatically terminated: Exceeded maximum integrity strikes "
-                f"({current_strikes} violations recorded). Last violation: {detail_msg}"
+                f"({current_strikes} of {cls.MAX_STRIKES} violations recorded). Last violation: {detail_msg}"
             )
             assessment.completed_at = datetime.now(timezone.utc)
             assessment.score = 0
@@ -282,11 +292,36 @@ class ProctoringService:
                 strike_added=strike_added,
                 strike_count=current_strikes,
                 max_strikes=cls.MAX_STRIKES,
+                remaining_strikes=0,
+                show_warning_modal=True,
+                warning_level="disqualified",
                 violation_type=violation_type or "max_strikes_exceeded",
-                message="Assessment automatically terminated: Maximum allowed integrity strikes exceeded.",
+                message="Assessment automatically terminated: 10 integrity strikes reached. Submission locked at 0/100.",
                 integrity_score=0,
                 is_disqualified=True,
                 details=assessment.disqualification_reason
+            )
+
+        # Stealth Mode Thresholds:
+        # Strikes 1 to 7: Recorded silently in background, NO alarming popups
+        # Strike 8: 2 strikes remaining -> Warning modal
+        # Strike 9: 1 strike remaining -> Critical final warning modal
+        show_warning_modal = False
+        warning_level = "none"
+
+        if current_strikes >= cls.FINAL_WARNING_THRESHOLD:  # Strike 9
+            show_warning_modal = True
+            warning_level = "final_strike_9"
+            warning_msg = (
+                f"🚨 FINAL WARNING: 1 strike remaining ({current_strikes} of {cls.MAX_STRIKES} used). "
+                f"The very next tab switch, blur, or copy attempt will permanently terminate your assessment."
+            )
+        elif current_strikes >= cls.WARNING_THRESHOLD:  # Strike 8
+            show_warning_modal = True
+            warning_level = "warning_strike_8"
+            warning_msg = (
+                f"⚠️ INTEGRITY WARNING: 2 strikes remaining ({current_strikes} of {cls.MAX_STRIKES} used). "
+                f"Continued tab navigation or external clipboard usage will trigger auto-disqualification."
             )
 
         status_result = "strike" if strike_added else ("warning" if warning_msg else "ok")
@@ -295,6 +330,9 @@ class ProctoringService:
             strike_added=strike_added,
             strike_count=current_strikes,
             max_strikes=cls.MAX_STRIKES,
+            remaining_strikes=remaining,
+            show_warning_modal=show_warning_modal,
+            warning_level=warning_level,
             violation_type=violation_type,
             message=warning_msg or "Environment secure. Assessment in progress.",
             integrity_score=new_integrity,

@@ -20,7 +20,7 @@
     candidateAnswers: {}, // { [question_id]: code }
     currentLanguage: 'python',
     strikeCount: 0,
-    maxStrikes: 3,
+    maxStrikes: 10,
     integrityScore: 100,
     currentAttempt: 1,
     maxAttempts: 5,
@@ -1572,46 +1572,71 @@
     }
   }
 
-  // --- Strict Anti-Cheat Listeners (Copy/Paste, Tab Switch, Fullscreen) ---
-  let blurTimer = null;
+  // --- Strict Zero-Tolerance Anti-Cheat Listeners (Copy/Paste, Tab Switch, Shortcuts) ---
   function setupAntiCheatListeners() {
-    // 1. Copy/Paste/Cut Interceptors
-    ['copy', 'paste', 'cut'].forEach(evt => {
-      document.addEventListener(evt, (e) => {
-        // Allow copy/paste if typing in our own code editor
-        if (e.target && e.target.id === 'code-editor') {
-          return;
-        }
-        e.preventDefault();
-        reportProctorViolation('copy_paste_attempt', `Attempted unauthorized ${evt} action.`);
-        showViolationToast(`⚠️ Copy/Paste outside the code editor is disabled.`);
+    // Acknowledge Strike Warning Modal Button
+    const btnAckWarning = document.getElementById('btn-acknowledge-strike-warning');
+    if (btnAckWarning) {
+      btnAckWarning.addEventListener('click', () => {
+        const modal = document.getElementById('modal-proctor-strike-warning');
+        if (modal) modal.style.display = 'none';
       });
+    }
+
+    // 1. Zero-Tolerance Copy / Paste / Cut / Drag Interception (0 Allowed)
+    ['copy', 'paste', 'cut', 'dragstart', 'drop'].forEach(evt => {
+      document.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        reportProctorViolation('copy_paste_attempt', `Attempted unauthorized ${evt} action (blocked by zero-tolerance proctor).`);
+      }, true);
     });
 
-    // 2. Disable Context Menu
+    // 2. Disable Context Menu Everywhere (No Right-Click)
     document.addEventListener('contextmenu', (e) => {
-      if (e.target && e.target.id === 'code-editor') return;
       e.preventDefault();
-    });
+      e.stopPropagation();
+      reportProctorViolation('context_menu_attempt', 'Attempted right-click / context menu interaction.');
+    }, true);
 
-    // 3. Tab Switching / Window Blur with Graceful Debounce
+    // 3. Block Developer Key Combinations & Clipboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const key = (e.key || '').toLowerCase();
+
+      // Block Ctrl/Cmd + C, V, X, U (view source), S (save), P (print)
+      if (isCtrlOrCmd && ['c', 'v', 'x', 'u', 's', 'p'].includes(key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        reportProctorViolation('copy_paste_attempt', `Blocked clipboard key combination: ${e.ctrlKey ? 'Ctrl' : 'Cmd'}+${key.toUpperCase()}`);
+      }
+
+      // Block F12 and DevTools inspection shortcuts
+      if (e.key === 'F12' || (isCtrlOrCmd && e.shiftKey && ['i', 'j', 'c'].includes(key))) {
+        e.preventDefault();
+        e.stopPropagation();
+        reportProctorViolation('devtools_attempt', 'Attempted to open browser developer tools inspection.');
+      }
+    }, true);
+
+    // 4. Instant Tab Navigation / Window Blur (Zero Grace Delay)
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && screens.assessment && screens.assessment.classList.contains('active')) {
-        blurTimer = setTimeout(() => {
-          reportProctorViolation('tab_blur', 'Candidate navigated away from assessment tab.');
-          showViolationToast(`⚠️ Window unfocused. You must remain on the assessment screen.`);
-        }, 3000);
-      } else if (!document.hidden && blurTimer) {
-        clearTimeout(blurTimer);
-        blurTimer = null;
+      if (document.hidden && screens.assessment && screens.assessment.classList.contains('active') && !state.isTerminated) {
+        reportProctorViolation('tab_blur', 'Candidate navigated away from assessment tab.');
       }
     });
 
-    // 4. Fullscreen Exit with UI notification
+    window.addEventListener('blur', () => {
+      if (screens.assessment && screens.assessment.classList.contains('active') && !state.isTerminated) {
+        reportProctorViolation('tab_blur', 'Assessment window lost focus / dual-screen switch detected.');
+      }
+    });
+
+    // 5. Fullscreen Exit Detection
     document.addEventListener('fullscreenchange', () => {
       updateFullscreenUI();
       if (!document.fullscreenElement && !document.webkitFullscreenElement && screens.assessment && screens.assessment.classList.contains('active') && !state.isTerminated) {
-        showViolationToast(`⚠️ Fullscreen exited. Click "Fullscreen" button in top bar to resume.`);
+        reportProctorViolation('fullscreen_exit', 'Candidate exited fullscreen mode.');
       }
     });
   }
@@ -1665,9 +1690,9 @@
           handleProctorCheckResult(data);
         }
       } catch (err) {
-        console.warn("Heartbeat tick failed:", err);
+        console.error("Heartbeat error:", err);
       }
-    }, 5000); // Check every 5 seconds
+    }, 4000);
   }
 
   function captureWebcamFrame() {
@@ -1693,33 +1718,95 @@
   }
 
   function handleProctorCheckResult(res) {
-    state.strikeCount = res.strike_count;
-    state.maxStrikes = res.max_strikes;
-    state.integrityScore = res.integrity_score;
+    state.strikeCount = res.strike_count || 0;
+    state.maxStrikes = res.max_strikes || 10;
+    state.integrityScore = res.integrity_score !== undefined ? res.integrity_score : 100;
 
     updateStrikeHUD();
 
-    if (res.strike_added) {
-      showViolationToast(`⚠️ Strike ${state.strikeCount}/${state.maxStrikes}: ${res.message}`);
+    // Stealth Mode Proctoring:
+    // Strikes 1-7: Quietly recorded in background, no alarming popups
+    // Strike 8: 2 strikes remaining -> Warning Modal
+    // Strike 9: 1 strike remaining -> Critical Final Warning Modal
+    if (res.show_warning_modal || state.strikeCount === 8 || state.strikeCount === 9) {
+      showStrikeWarningModal(state.strikeCount, state.maxStrikes);
     }
 
-    if (res.is_disqualified || res.status === 'auto_terminated') {
+    if (res.is_disqualified || res.status === 'auto_terminated' || state.strikeCount >= state.maxStrikes) {
       triggerAutoTermination(res.details || res.message);
     }
   }
 
   function updateStrikeHUD() {
-    strikeCountText.textContent = `${state.strikeCount} / ${state.maxStrikes}`;
-    const dots = [
-      document.getElementById('dot-strike-1'),
-      document.getElementById('dot-strike-2'),
-      document.getElementById('dot-strike-3')
-    ];
-    dots.forEach((dot, idx) => {
-      if (dot) {
-        dot.classList.toggle('active', idx < state.strikeCount);
+    const container = document.getElementById('strike-pill-container');
+    const iconEl = document.getElementById('strike-pill-icon');
+    const statusEl = document.getElementById('strike-pill-status');
+    const countEl = document.getElementById('strike-count-text');
+
+    if (!container) return;
+
+    if (state.strikeCount >= 9) {
+      container.style.background = 'rgba(239, 68, 68, 0.25)';
+      container.style.borderColor = '#ef4444';
+      if (iconEl) iconEl.textContent = '🚨';
+      if (statusEl) statusEl.textContent = 'FINAL WARNING: 1 Strike Left';
+      if (countEl) {
+        countEl.style.display = 'inline';
+        countEl.textContent = `(${state.strikeCount}/${state.maxStrikes})`;
+        countEl.style.color = '#f87171';
       }
-    });
+    } else if (state.strikeCount >= 8) {
+      container.style.background = 'rgba(245, 158, 11, 0.25)';
+      container.style.borderColor = '#f59e0b';
+      if (iconEl) iconEl.textContent = '⚠️';
+      if (statusEl) statusEl.textContent = 'Warning: 2 Strikes Left';
+      if (countEl) {
+        countEl.style.display = 'inline';
+        countEl.textContent = `(${state.strikeCount}/${state.maxStrikes})`;
+        countEl.style.color = '#fbbf24';
+      }
+    } else {
+      // Stealth Mode: Quiet monitoring
+      container.style.background = 'rgba(16, 185, 129, 0.15)';
+      container.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      if (iconEl) iconEl.textContent = '🔒';
+      if (statusEl) statusEl.textContent = 'Integrity: Monitored';
+      if (countEl) countEl.style.display = 'none';
+    }
+  }
+
+  function showStrikeWarningModal(strikes, maxStrikes) {
+    const modal = document.getElementById('modal-proctor-strike-warning');
+    const title = document.getElementById('strike-warning-title');
+    const badge = document.getElementById('strike-warning-badge');
+    const body = document.getElementById('strike-warning-body');
+    if (!modal) return;
+
+    if (strikes >= 9) {
+      if (title) title.textContent = '🚨 CRITICAL FINAL WARNING: 1 STRIKE REMAINING';
+      if (badge) {
+        badge.textContent = `9 of 10 Violations Logged • DANGER ZONE`;
+        badge.style.background = 'rgba(239,68,68,0.3)';
+        badge.style.borderColor = '#ef4444';
+        badge.style.color = '#fca5a5';
+      }
+      if (body) {
+        body.innerHTML = `Automated AI proctoring has recorded <strong>9 integrity violations</strong> (tab navigation, window blur, or unauthorized clipboard usage).<br><br><span style="color: #f87171; font-weight: 700;">YOUR VERY NEXT VIOLATION WILL IMMEDIATELY TERMINATE THIS EXAM PERMANENTLY WITH A SCORE OF 0/100.</span>`;
+      }
+    } else {
+      if (title) title.textContent = '⚠️ INTEGRITY WARNING: 2 STRIKES REMAINING';
+      if (badge) {
+        badge.textContent = `8 of 10 Violations Logged`;
+        badge.style.background = 'rgba(245,158,11,0.2)';
+        badge.style.borderColor = '#f59e0b';
+        badge.style.color = '#fbbf24';
+      }
+      if (body) {
+        body.innerHTML = `Automated proctoring has detected <strong>8 integrity violations</strong> during this session. You have <strong>2 strikes remaining</strong> before this assessment is auto-terminated and your submission is flagged for cheating to the recruiter.`;
+      }
+    }
+
+    modal.style.display = 'flex';
   }
 
   function showViolationToast(msg) {

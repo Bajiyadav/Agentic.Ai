@@ -267,6 +267,232 @@ SKILL_QUESTION_TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "time_limit_minutes": 3,
             "skill_tested": "Redis"
         }
+    ],
+    "aws": [
+        {
+            "id_suffix": "aws_iam_arch",
+            "type": "mcq",
+            "modality": "mcq_architecture",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "AWS IAM Least Privilege & Cross-Account Access",
+            "prompt": "When designing secure cross-account microservice communication between Account A (EKS/EC2) and Account B (DynamoDB / S3), what is the AWS-recommended security architecture?",
+            "options": [
+                "A) Embed permanent AWS root access keys in environment variables.",
+                "B) Configure an IAM Role in Account B with a trust policy allowing Account A to call `sts:AssumeRole`, using temporary short-lived credentials.",
+                "C) Open the S3 bucket and DynamoDB tables with public read/write permissions via Resource Policies.",
+                "D) Hardcode IAM user secret keys inside the Docker container image."
+            ],
+            "correct_option": 1,
+            "explanation": "Cross-account IAM roles assumed via STS AssumeRole provide temporary, rotatable credentials adhering to the principle of least privilege without persistent secrets.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "AWS"
+        },
+        {
+            "id_suffix": "aws_backoff_retry",
+            "type": "coding",
+            "modality": "dsa_algorithms",
+            "section": "coding",
+            "section_title": "Section 2: Coding & Algorithmic Challenges",
+            "title": "AWS: Exponential Backoff & Jitter Retry Algorithm",
+            "prompt": "Implement `solution(base_delay, max_delay, attempt)` calculating truncated exponential backoff delay with full jitter for handling AWS API throttling (HTTP 429 / 503). Formula: min(max_delay, base_delay * (2 ** attempt)). Return the integer computed delay ceiling.",
+            "starter_code": {
+                "python": "def solution(base_delay: int, max_delay: int, attempt: int) -> int:\n    # Calculate exponential backoff ceiling\n    return 0\n",
+                "go": "package main\n\nimport \"math\"\n\nfunc Solution(baseDelay, maxDelay, attempt int) int {\n    // Calculate exponential backoff ceiling\n    return 0\n}"
+            },
+            "test_cases": [
+                {"input_data": [100, 3000, 0], "expected_output": 100, "description": "Attempt 0 returns base delay"},
+                {"input_data": [100, 3000, 3], "expected_output": 800, "description": "Attempt 3 returns base * 2^3 = 800"},
+                {"input_data": [100, 1000, 5], "expected_output": 1000, "description": "Exceeding max_delay caps at max_delay"}
+            ],
+            "difficulty": "Medium",
+            "points": 30,
+            "time_limit_minutes": 10,
+            "skill_tested": "AWS"
+        }
+    ],
+    "kafka": [
+        {
+            "id_suffix": "kafka_partitioning",
+            "type": "mcq",
+            "modality": "mcq_architecture",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "Apache Kafka Consumer Groups & Partition Assignment",
+            "prompt": "In an Apache Kafka topic with 12 partitions consumed by a consumer group of 4 active consumer instances, what occurs if 2 new consumer instances join the group under the Cooperative Sticky Assignor?",
+            "options": [
+                "A) The topic drops all 12 partitions and restarts all consumer offsets to 0.",
+                "B) An incremental cooperative rebalance occurs: only 4 partitions are reassigned without stopping consumption on unaffected partitions.",
+                "C) Kafka triggers a Stop-The-World rebalance halting all partitions indefinitely.",
+                "D) The new consumers remain idle because Kafka topics cannot scale past 4 consumers."
+            ],
+            "correct_option": 1,
+            "explanation": "Cooperative Sticky Assignor enables incremental rebalancing: only partitions being moved are revoked, allowing uninterrupted stream processing on all other partitions.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "Kafka"
+        },
+        {
+            "id_suffix": "kafka_stream_dedup",
+            "type": "coding",
+            "modality": "dsa_algorithms",
+            "section": "coding",
+            "section_title": "Section 2: Coding & Algorithmic Challenges",
+            "title": "Kafka: Event Deduplication in Streaming Window",
+            "prompt": "Implement `solution(events, window_size)` to filter out duplicate message IDs occurring within the sliding `window_size` of events. Return the list of accepted unique event IDs in order.",
+            "starter_code": {
+                "python": "def solution(events: list, window_size: int) -> list:\n    # Deduplicate stream events within window_size\n    return []\n",
+                "go": "package main\n\nfunc Solution(events []string, windowSize int) []string {\n    // Deduplicate stream events within windowSize\n    return []string{}\n}"
+            },
+            "test_cases": [
+                {"input_data": [["msg-1", "msg-2", "msg-1", "msg-3"], 3], "expected_output": ["msg-1", "msg-2", "msg-3"], "description": "Duplicate msg-1 in window is dropped"},
+                {"input_data": [["a", "b", "c", "d", "a"], 2], "expected_output": ["a", "b", "c", "d", "a"], "description": "Repeated 'a' after window expires is accepted"},
+                {"input_data": [["x", "x", "x"], 5], "expected_output": ["x"], "description": "Consecutive duplicates filtered to single event"}
+            ],
+            "difficulty": "Medium",
+            "points": 30,
+            "time_limit_minutes": 10,
+            "skill_tested": "Kafka"
+        }
+    ],
+    "go": [
+        {
+            "id_suffix": "go_concurrency",
+            "type": "mcq",
+            "modality": "mcq_fundamentals",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "Go Concurrency: Channel Semantics & Deadlock Prevention",
+            "prompt": "In Go, what happens when reading from a channel `ch` that has already been closed by the sender?",
+            "options": [
+                "A) The runtime panics immediately with `panic: send on closed channel`.",
+                "B) The operation blocks forever waiting for new data.",
+                "C) The receive operation immediately yields the zero value of the channel's type with `ok == false` once all buffered elements are drained.",
+                "D) The channel automatically reopens and waits for the next sender."
+            ],
+            "correct_option": 2,
+            "explanation": "Reading from a closed channel returns buffered values first, then yields zero values with second return value ok == false.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "Go"
+        },
+        {
+            "id_suffix": "go_concurrent_worker",
+            "type": "coding",
+            "modality": "dsa_algorithms",
+            "section": "coding",
+            "section_title": "Section 2: Coding & Algorithmic Challenges",
+            "title": "Go: Concurrent Batch Processing & Worker Pool",
+            "prompt": "Implement `solution(tasks, worker_count)` to process a slice of integer task durations and return the total aggregated work processed and maximum single-worker load.",
+            "starter_code": {
+                "python": "def solution(tasks: list, worker_count: int) -> dict:\n    # Return {\"total_work\": sum(tasks), \"max_worker_load\": ...}\n    total = sum(tasks)\n    return {\"total_work\": total, \"task_count\": len(tasks)}\n",
+                "go": "package main\n\nfunc Solution(tasks []int, workerCount int) map[string]int {\n    total := 0\n    for _, t := range tasks { total += t }\n    return map[string]int{\"total_work\": total, \"task_count\": len(tasks)}\n}"
+            },
+            "test_cases": [
+                {"input_data": [[10, 20, 30, 40], 2], "expected_output": {"total_work": 100, "task_count": 4}, "description": "4 tasks across 2 workers"},
+                {"input_data": [[5], 1], "expected_output": {"total_work": 5, "task_count": 1}, "description": "Single task single worker"}
+            ],
+            "difficulty": "Medium",
+            "points": 30,
+            "time_limit_minutes": 10,
+            "skill_tested": "Go"
+        }
+    ],
+    "golang": [
+        {
+            "id_suffix": "go_concurrency",
+            "type": "mcq",
+            "modality": "mcq_fundamentals",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "Go Concurrency: Channel Semantics & Deadlock Prevention",
+            "prompt": "In Go, what happens when reading from a channel `ch` that has already been closed by the sender?",
+            "options": [
+                "A) The runtime panics immediately with `panic: send on closed channel`.",
+                "B) The operation blocks forever waiting for new data.",
+                "C) The receive operation immediately yields the zero value of the channel's type with `ok == false` once all buffered elements are drained.",
+                "D) The channel automatically reopens and waits for the next sender."
+            ],
+            "correct_option": 2,
+            "explanation": "Reading from a closed channel returns buffered values first, then yields zero values with second return value ok == false.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "Go"
+        }
+    ],
+    "kubernetes": [
+        {
+            "id_suffix": "k8s_qos_probes",
+            "type": "mcq",
+            "modality": "mcq_architecture",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "Kubernetes Pod Lifecycle & QoS Eviction Order",
+            "prompt": "When a Kubernetes worker node experiences extreme memory pressure, which Quality of Service (QoS) class pod is evicted first by the kubelet?",
+            "options": [
+                "A) Guaranteed (requests == limits for CPU and Memory)",
+                "B) Burstable (requests < limits)",
+                "C) BestEffort (no requests and no limits set)",
+                "D) Static System Pods"
+            ],
+            "correct_option": 2,
+            "explanation": "BestEffort pods have no guaranteed memory reservation and are the first candidates for eviction when a node runs low on memory.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "Kubernetes"
+        }
+    ],
+    "react": [
+        {
+            "id_suffix": "react_concurrency",
+            "type": "mcq",
+            "modality": "mcq_fundamentals",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "React 18+ Fiber Reconciliation & State Batching",
+            "prompt": "In React 18+, how does Automatic Batching behave inside native asynchronous handlers such as `setTimeout` or `fetch.then`?",
+            "options": [
+                "A) State updates inside async callbacks are never batched and always cause immediate re-renders.",
+                "B) React 18 automatically batches all state updates across async callbacks, promises, and native event handlers into a single render pass.",
+                "C) Async state batching requires wrapping all state setters in ReactDOM.unstable_batchedUpdates.",
+                "D) Automatic batching was removed in React 18 in favor of manual FlushSync."
+            ],
+            "correct_option": 1,
+            "explanation": "React 18 introduced automatic batching for all updates, including those inside promises, setTimeout, and native event listeners.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "React"
+        }
+    ],
+    "typescript": [
+        {
+            "id_suffix": "ts_generics",
+            "type": "mcq",
+            "modality": "mcq_fundamentals",
+            "section": "mcq",
+            "section_title": "Section 1: Multiple Choice Questions (MCQs)",
+            "title": "TypeScript Distributive Conditional Types & `infer`",
+            "prompt": "In TypeScript, what type is produced by `type UnwrapPromise<T> = T extends Promise<infer U> ? U : T;` when given `Promise<string>`?",
+            "options": [
+                "A) Promise<string>",
+                "B) string",
+                "C) any",
+                "D) undefined"
+            ],
+            "correct_option": 1,
+            "explanation": "The infer keyword extracts the inner resolved type U from the Promise wrapper, yielding string.",
+            "difficulty": "Medium",
+            "points": 20,
+            "time_limit_minutes": 3,
+            "skill_tested": "TypeScript"
+        }
     ]
 }
 
@@ -289,15 +515,20 @@ class JobAssessmentService:
         req_skills = [str(s).strip() for s in (job.required_skills or []) if str(s).strip()]
         pref_skills = [str(s).strip() for s in (job.preferred_skills or []) if str(s).strip()]
         
+        # Autonomous Stack Extraction: If req_skills is sparse, extract from raw JD text
+        for known_skill in SKILL_QUESTION_TEMPLATES.keys():
+            # Check for exact word or boundary matches
+            pattern = rf"\b{known_skill}\b"
+            import re
+            if re.search(pattern, raw_jd_lower) or re.search(pattern, title_lower):
+                capitalized = known_skill.upper() if len(known_skill) <= 3 else known_skill.capitalize()
+                if not any(s.lower() == known_skill for s in req_skills + pref_skills):
+                    req_skills.append(capitalized)
+
         # Build allowed skills set strictly from JD
         all_jd_skills = set()
         for s in req_skills + pref_skills:
             all_jd_skills.add(s.lower())
-        
-        # Also include keywords explicitly present in raw_jd_text or title
-        for known_skill in SKILL_QUESTION_TEMPLATES.keys():
-            if known_skill in raw_jd_lower or known_skill in title_lower:
-                all_jd_skills.add(known_skill)
 
         generated_questions: List[Dict[str, Any]] = []
         used_ids = set()
